@@ -17,15 +17,30 @@ class PinCodeField extends StatelessWidget {
       keyboardType: TextInputType.number,
       textAlign: TextAlign.center,
       maxLength: 6,
-      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 12),
+      style: const TextStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 12,
+      ),
       decoration: InputDecoration(
         counterText: '',
-        hintText: '●●●●●●',
-        hintStyle: TextStyle(fontSize: 32, letterSpacing: 12, color: Colors.grey.shade300),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        hintText: '●  ●  ●  ●  ●  ●',
+        hintStyle: TextStyle(
+          fontSize: 32,
+          letterSpacing: 12,
+          color: Colors.grey.shade300,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        filled: true,
+        fillColor: Colors.grey.shade50,
       ),
       onChanged: (value) {
-        if (value.length == 6) onCompleted(value);
+        if (value.length == 6) {
+          onCompleted(value);
+        }
       },
     );
   }

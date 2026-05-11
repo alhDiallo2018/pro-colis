@@ -4,6 +4,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import 'otp_verification_screen.dart';
+import 'pin_login_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -17,14 +18,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _identifierController = TextEditingController();
   bool _isLoading = false;
+  bool _usePinLogin = false;
 
   Future<void> _sendOtp() async {
     if (!_formKey.currentState!.validate()) return;
+    
     setState(() => _isLoading = true);
+    
     final result = await ref.read(authProvider.notifier).sendOtp(
       identifier: _identifierController.text.trim(),
     );
+    
     setState(() => _isLoading = false);
+    
     if (result['success'] == true) {
       Navigator.push(
         context,
@@ -50,53 +56,151 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 40),
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF0B6E3A), Color(0xFF168A48)]),
-                  borderRadius: BorderRadius.circular(20),
+              Center(
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0B6E3A), Color(0xFF168A48)],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Icon(Icons.local_shipping, size: 40, color: Colors.white),
                 ),
-                child: const Icon(Icons.local_shipping, size: 40, color: Colors.white),
               ),
               const SizedBox(height: 24),
-              const Text('PRO COLIS', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+              const Center(
+                child: Text(
+                  'PRO COLIS',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+              ),
               const SizedBox(height: 8),
-              const Text('Transport de colis interurbain', style: TextStyle(color: Colors.grey)),
+              const Center(
+                child: Text('Transport de colis interurbain'),
+              ),
               const SizedBox(height: 48),
-              const Text('Connexion', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              const Text('Entrez votre email ou numéro de téléphone'),
-              const SizedBox(height: 32),
-              Form(
-                key: _formKey,
-                child: CustomTextField(
-                  controller: _identifierController,
-                  label: 'Email ou Téléphone',
-                  prefixIcon: Icons.person_outline,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
-                ),
+              // Switch entre OTP et PIN
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _LoginMethodButton(
+                    title: 'OTP',
+                    isSelected: !_usePinLogin,
+                    onTap: () => setState(() => _usePinLogin = false),
+                  ),
+                  const SizedBox(width: 16),
+                  _LoginMethodButton(
+                    title: 'PIN',
+                    isSelected: _usePinLogin,
+                    onTap: () => setState(() => _usePinLogin = true),
+                  ),
+                ],
               ),
               const SizedBox(height: 24),
-              CustomButton(text: 'Envoyer le code OTP', onPressed: _sendOtp, isLoading: _isLoading),
+              if (!_usePinLogin) ...[
+                const Text(
+                  'Connexion',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Entrez votre email ou numéro de téléphone',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 32),
+                Form(
+                  key: _formKey,
+                  child: CustomTextField(
+                    controller: _identifierController,
+                    label: 'Email ou Téléphone',
+                    prefixIcon: Icons.person_outline,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                CustomButton(
+                  text: 'Envoyer le code OTP',
+                  onPressed: _sendOtp,
+                  isLoading: _isLoading,
+                ),
+              ] else ...[
+                const Text(
+                  'Connexion par PIN',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Entrez votre code PIN à 6 chiffres',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 32),
+                const PinLoginScreen(),
+              ],
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Pas encore de compte ? ', style: TextStyle(color: Colors.grey[600])),
+                  Text(
+                    'Pas encore de compte ? ',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
                   TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                      );
+                    },
+                    child: const Text(
+                      'S\'inscrire',
+                      style: TextStyle(color: Color(0xFF0B6E3A)),
                     ),
-                    child: const Text('S\'inscrire', style: TextStyle(color: Color(0xFF0B6E3A))),
                   ),
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoginMethodButton extends StatelessWidget {
+  final String title;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _LoginMethodButton({
+    required this.title,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0B6E3A) : Colors.transparent,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF0B6E3A) : Colors.grey.shade300,
+          ),
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ),

@@ -24,10 +24,12 @@ dependencies:
   geolocator: ^14.0.2
   permission_handler: ^11.0.1
   flutter_local_notifications: ^16.3.0
-  firebase_core: ^2.24.0
-  firebase_messaging: ^14.7.0
+  firebase_core: ^4.7.0
+  firebase_messaging: ^16.2.0
+  firebase_messaging_web: ^4.1.5
   google_fonts: ^8.1.0
   geocoding: ^4.0.0
+  uuid: ^4.5.3
 
 
 dev_dependencies:

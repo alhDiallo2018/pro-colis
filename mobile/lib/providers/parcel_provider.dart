@@ -1,106 +1,228 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/api_service.dart';
-import '../models/parcel.dart';
 
+import '../models/parcel.dart';
+import '../services/api_service.dart';
+
+// Provider pour le gestionnaire des colis
 final parcelProvider = StateNotifierProvider<ParcelNotifier, ParcelState>((ref) {
   return ParcelNotifier();
 });
 
 class ParcelNotifier extends StateNotifier<ParcelState> {
   ParcelNotifier() : super(ParcelState.initial());
-
+  
   final ApiService _apiService = ApiService();
 
+  // Charger tous les colis de l'utilisateur (client)
   Future<void> loadMyParcels({String? status}) async {
-    state = state.copyWith(isLoading: true);
+    state = ParcelState.loading();
     try {
       final parcels = await _apiService.getMyParcels(status: status);
-      state = state.copyWith(isLoading: false, parcels: parcels);
+      state = ParcelState.loaded(parcels);
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = ParcelState.error(e.toString());
     }
   }
 
+  // Charger les colis assignés au chauffeur
+  Future<void> loadDriverParcels() async {
+    state = ParcelState.loading();
+    try {
+      final parcels = await _apiService.getDriverParcels();
+      state = ParcelState.loaded(parcels);
+    } catch (e) {
+      state = ParcelState.error(e.toString());
+    }
+  }
+
+  // Créer un nouveau colis
   Future<Parcel?> createParcel(Map<String, dynamic> data) async {
-    state = state.copyWith(isLoading: true);
+    state = ParcelState.loading();
     try {
       final parcel = await _apiService.createParcel(data);
-      final newParcels = [parcel, ...state.parcels];
-      state = state.copyWith(isLoading: false, parcels: newParcels);
+      // Recharger la liste après création
+      await loadMyParcels();
       return parcel;
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = ParcelState.error(e.toString());
       return null;
     }
   }
 
+  // Suivre un colis par numéro de tracking
   Future<Parcel?> trackParcel(String trackingNumber) async {
-    state = state.copyWith(isLoading: true);
+    state = ParcelState.loading();
     try {
       final parcel = await _apiService.trackParcel(trackingNumber);
-      state = state.copyWith(isLoading: false, currentParcel: parcel);
+      state = ParcelState.tracked(parcel);
       return parcel;
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = ParcelState.error(e.toString());
       return null;
     }
   }
 
-  Future<List<ParcelEvent>?> getParcelEvents(String parcelId) async {
+  // Mettre à jour le statut d'un colis
+  Future<Parcel?> updateParcelStatus(String parcelId, String status, {String? location}) async {
     try {
-      return await _apiService.getParcelEvents(parcelId);
+      final parcel = await _apiService.updateParcelStatus(parcelId, status, location: location);
+      // Recharger la liste appropriée selon le rôle
+      await loadDriverParcels();
+      return parcel;
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = ParcelState.error(e.toString());
       return null;
     }
   }
 
-  Future<Parcel?> updateStatus(String parcelId, String status, {String? location}) async {
+  // Marquer un colis comme ramassé
+  Future<void> markAsPickedUp(String parcelId) async {
+    state = ParcelState.loading();
     try {
-      final updated = await _apiService.updateParcelStatus(parcelId, status, location: location);
-      final updatedParcels = state.parcels.map((p) => p.id == parcelId ? updated : p).toList();
-      state = state.copyWith(parcels: updatedParcels, currentParcel: updated);
-      return updated;
+      await _apiService.updateParcelStatus(parcelId, 'picked_up', location: 'Au garage');
+      await loadDriverParcels();
     } catch (e) {
-      state = state.copyWith(error: e.toString());
-      return null;
+      state = ParcelState.error(e.toString());
     }
   }
 
+  // Marquer un colis comme en transit
+  Future<void> markAsInTransit(String parcelId) async {
+    state = ParcelState.loading();
+    try {
+      await _apiService.updateParcelStatus(parcelId, 'in_transit');
+      await loadDriverParcels();
+    } catch (e) {
+      state = ParcelState.error(e.toString());
+    }
+  }
+
+  // Marquer un colis comme livré
+  Future<void> markAsDelivered(String parcelId) async {
+    state = ParcelState.loading();
+    try {
+      await _apiService.updateParcelStatus(parcelId, 'delivered', location: 'Au destinataire');
+      await loadDriverParcels();
+    } catch (e) {
+      state = ParcelState.error(e.toString());
+    }
+  }
+
+  // Récupérer les événements d'un colis
+  Future<List<ParcelEvent>> getParcelEvents(String parcelId) async {
+    try {
+      final events = await _apiService.getParcelEvents(parcelId);
+      return events;
+    } catch (e) {
+      state = ParcelState.error(e.toString());
+      return [];
+    }
+  }
+
+  // Réinitialiser l'état
+  void reset() {
+    state = ParcelState.initial();
+  }
+
+  // Effacer les erreurs
   void clearError() {
-    state = state.copyWith(error: null);
+    if (state.error != null) {
+      state = ParcelState.initial();
+    }
   }
 }
 
+// État du provider
 class ParcelState {
   final bool isLoading;
   final List<Parcel> parcels;
-  final Parcel? currentParcel;
+  final Parcel? trackedParcel;
   final String? error;
+  final bool isSuccess;
 
   ParcelState({
     required this.isLoading,
-    required this.parcels,
-    this.currentParcel,
+    this.parcels = const [],
+    this.trackedParcel,
     this.error,
+    this.isSuccess = false,
   });
 
+  // État initial
   factory ParcelState.initial() => ParcelState(
     isLoading: false,
-    parcels: [],
+    parcels: const [],
+    trackedParcel: null,
+    error: null,
+    isSuccess: false,
   );
 
-  ParcelState copyWith({
-    bool? isLoading,
-    List<Parcel>? parcels,
-    Parcel? currentParcel,
-    String? error,
-  }) {
-    return ParcelState(
-      isLoading: isLoading ?? this.isLoading,
-      parcels: parcels ?? this.parcels,
-      currentParcel: currentParcel ?? this.currentParcel,
-      error: error ?? this.error,
-    );
+  // État de chargement
+  factory ParcelState.loading() => ParcelState(
+    isLoading: true,
+    parcels: const [],
+    trackedParcel: null,
+    error: null,
+    isSuccess: false,
+  );
+
+  // État avec liste de colis chargée
+  factory ParcelState.loaded(List<Parcel> parcels) => ParcelState(
+    isLoading: false,
+    parcels: parcels,
+    trackedParcel: null,
+    error: null,
+    isSuccess: true,
+  );
+
+  // État avec colis suivi
+  factory ParcelState.tracked(Parcel parcel) => ParcelState(
+    isLoading: false,
+    parcels: const [],
+    trackedParcel: parcel,
+    error: null,
+    isSuccess: true,
+  );
+
+  // État d'erreur
+  factory ParcelState.error(String error) => ParcelState(
+    isLoading: false,
+    parcels: const [],
+    trackedParcel: null,
+    error: error,
+    isSuccess: false,
+  );
+
+  // Getter pour vérifier si la liste est vide
+  bool get hasParcels => parcels.isNotEmpty;
+  
+  // Getter pour obtenir les colis par statut
+  List<Parcel> getParcelsByStatus(ParcelStatus status) {
+    return parcels.where((parcel) => parcel.status == status).toList();
+  }
+  
+  // Getter pour les colis en attente de ramassage
+  List<Parcel> get pendingParcels {
+    return parcels.where((parcel) => 
+      parcel.status == ParcelStatus.pending || 
+      parcel.status == ParcelStatus.confirmed
+    ).toList();
+  }
+  
+  // Getter pour les colis en cours
+  List<Parcel> get inProgressParcels {
+    return parcels.where((parcel) => 
+      parcel.status == ParcelStatus.pickedUp || 
+      parcel.status == ParcelStatus.inTransit ||
+      parcel.status == ParcelStatus.arrived ||
+      parcel.status == ParcelStatus.outForDelivery
+    ).toList();
+  }
+  
+  // Getter pour les colis terminés
+  List<Parcel> get completedParcels {
+    return parcels.where((parcel) => 
+      parcel.status == ParcelStatus.delivered
+    ).toList();
   }
 }

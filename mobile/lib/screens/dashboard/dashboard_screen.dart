@@ -1,33 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../models/user.dart';
 import '../../providers/auth_provider.dart';
+// ignore: unused_import
+import '../../providers/parcel_provider.dart';
+// ignore: unused_import
+import '../parcel/new_parcel_screen.dart';
+// ignore: unused_import
+import '../parcel/track_parcel_screen.dart';
+// ignore: unused_import
+import '../profile/profile_screen.dart';
+import 'admin_dashboard.dart';
+import 'client_dashboard.dart';
+import 'driver_dashboard.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.read(authProvider).user;
-    return Scaffold(
-      appBar: AppBar(title: const Text('PRO COLIS'), backgroundColor: const Color(0xFF0B6E3A)),
-      body: Center(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Icon(Icons.check_circle, size: 80, color: Color(0xFF0B6E3A)),
-          const SizedBox(height: 24),
-          Text('Bienvenue ${user?.fullName ?? ""} !', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          const Text('Vous êtes connecté avec succès'),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: () async {
-              await ref.read(authProvider.notifier).logout();
-              if (context.mounted) Navigator.pushReplacementNamed(context, '/login');
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Se déconnecter', style: TextStyle(color: Colors.white)),
-          ),
-        ]),
-      ),
-    );
+    final authState = ref.watch(authProvider);
+    final user = authState.user;
+    
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Utilisateur non trouvé')),
+      );
+    }
+    
+    // Rediriger vers le dashboard selon le rôle
+    switch (user.role) {
+      case UserRole.driver:
+        return const DriverDashboard();
+      case UserRole.admin:
+      case UserRole.superAdmin:
+        return const AdminDashboard();
+      default:
+        return const ClientDashboard();
+    }
   }
 }
