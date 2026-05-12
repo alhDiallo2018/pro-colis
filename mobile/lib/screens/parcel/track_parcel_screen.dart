@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:procolis/models/parcel.dart';
-
 import '../../providers/parcel_provider.dart';
-// ignore: unused_import
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
-import '../../widgets/parcel_card.dart';
+import '../../models/parcel.dart';
 
 class TrackParcelScreen extends ConsumerStatefulWidget {
   const TrackParcelScreen({super.key});
@@ -18,289 +15,249 @@ class TrackParcelScreen extends ConsumerStatefulWidget {
 class _TrackParcelScreenState extends ConsumerState<TrackParcelScreen> {
   final _trackingController = TextEditingController();
   bool _isSearching = false;
+  Parcel? _trackedParcel;
 
   Future<void> _trackParcel() async {
     final trackingNumber = _trackingController.text.trim();
     if (trackingNumber.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Veuillez entrer un numéro de suivi')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez entrer un numéro de suivi')),
+      );
       return;
     }
     
     setState(() => _isSearching = true);
     final parcel = await ref.read(parcelProvider.notifier).trackParcel(trackingNumber);
+    setState(() {
+      _isSearching = false;
+      _trackedParcel = parcel;
+    });
     
-    if (mounted) {
-      setState(() => _isSearching = false);
-    }
-    
-    if (parcel == null && mounted) {
+    if (parcel == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Colis non trouvé'), backgroundColor: Colors.red),
       );
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final parcelState = ref.watch(parcelProvider);
-    // Utiliser 'trackedParcel' au lieu de 'currentParcel'
-    final trackedParcel = parcelState.trackedParcel;
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Suivre un colis'), 
-        backgroundColor: const Color(0xFF0B6E3A),
-        foregroundColor: Colors.white,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+  Widget _buildStatusTimeline(Parcel parcel) {
+    final List<Map<String, dynamic>> steps = [
+      {'status': 'pending', 'label': 'Création', 'icon': Icons.create, 'completed': true},
+      {'status': 'confirmed', 'label': 'Confirmé', 'icon': Icons.check_circle, 'completed': true},
+      {'status': 'pickedUp', 'label': 'Ramassé', 'icon': Icons.local_shipping, 'completed': parcel.status.value == 'pickedUp' || parcel.status.value == 'inTransit' || parcel.status.value == 'delivered'},
+      {'status': 'inTransit', 'label': 'En transit', 'icon': Icons.transfer_within_a_station, 'completed': parcel.status.value == 'inTransit' || parcel.status.value == 'delivered'},
+      {'status': 'arrived', 'label': 'Arrivé', 'icon': Icons.location_on, 'completed': parcel.status.value == 'arrived' || parcel.status.value == 'delivered'},
+      {'status': 'delivered', 'label': 'Livré', 'icon': Icons.check_circle, 'completed': parcel.status.value == 'delivered'},
+    ];
+
+    return Column(
+      children: steps.asMap().entries.map((entry) {
+        final index = entry.key;
+        final step = entry.value;
+        final isCompleted = step['completed'] as bool;
+        final isLast = index == steps.length - 1;
+        
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Column(
               children: [
-                Expanded(
-                  child: CustomTextField(
-                    controller: _trackingController,
-                    label: 'Numéro de suivi',
-                    prefixIcon: Icons.search,
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isCompleted ? const Color(0xFF0B6E3A) : Colors.grey.shade300,
                   ),
+                  child: Icon(step['icon'], color: Colors.white, size: 20),
                 ),
-                const SizedBox(width: 12),
-                if (_isSearching)
-                  const CircularProgressIndicator()
-                else
-                  ElevatedButton(
-                    onPressed: _trackParcel,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0B6E3A),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('Suivre', style: TextStyle(color: Colors.white)),
+                if (!isLast)
+                  Container(
+                    width: 2,
+                    height: 60,
+                    color: isCompleted ? const Color(0xFF0B6E3A) : Colors.grey.shade300,
                   ),
               ],
             ),
-            const SizedBox(height: 24),
-            if (trackedParcel != null)
-              ParcelCard(
-                parcel: trackedParcel, 
-                onTap: () {
-                  // Naviguer vers les détails du colis
-                  _showParcelDetails(trackedParcel);
-                }
-              )
-            else if (!_isSearching)
-              const Center(
+            const SizedBox(width: 12),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.local_shipping, size: 80, color: Colors.grey),
-                    SizedBox(height: 16),
-                    Text('Entrez un numéro de suivi pour localiser votre colis'),
+                    Text(
+                      step['label'],
+                      style: TextStyle(
+                        fontWeight: isCompleted ? FontWeight.bold : FontWeight.normal,
+                        color: isCompleted ? const Color(0xFF0B6E3A) : Colors.grey,
+                      ),
+                    ),
+                    if (isCompleted && step['status'] == parcel.status.value)
+                      Text(
+                        'En cours',
+                        style: TextStyle(fontSize: 12, color: const Color(0xFF0B6E3A)),
+                      ),
                   ],
                 ),
               ),
-            if (parcelState.error != null && !_isSearching && trackedParcel == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Center(
-                  child: Text(
-                    parcelState.error!,
-                    style: const TextStyle(color: Colors.red),
+            ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Suivre un colis'),
+        backgroundColor: const Color(0xFF0B6E3A),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Recherche
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    CustomTextField(
+                      controller: _trackingController,
+                      label: 'Numéro de suivi',
+                      prefixIcon: Icons.search,
+                      hint: 'Ex: PC-20250511-0042',
+                    ),
+                    const SizedBox(height: 16),
+                    CustomButton(
+                      text: 'Suivre mon colis',
+                      onPressed: _trackParcel,
+                      isLoading: _isSearching,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Résultat
+            if (_trackedParcel != null) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _trackedParcel!.trackingNumber,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _trackedParcel!.status.color.withAlpha(25),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _trackedParcel!.status.label,
+                                  style: TextStyle(fontSize: 12, color: _trackedParcel!.status.color),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_trackedParcel!.price != null)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                const Text('Montant', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                Text(
+                                  '${_trackedParcel!.price!.toStringAsFixed(0)} FCFA',
+                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0B6E3A)),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                      const Divider(height: 32),
+                      
+                      // Timeline
+                      _buildStatusTimeline(_trackedParcel!),
+                      const Divider(height: 32),
+                      
+                      // Informations
+                      ListTile(
+                        leading: const Icon(Icons.person, color: Colors.blue),
+                        title: const Text('Destinataire'),
+                        subtitle: Text(_trackedParcel!.receiverName),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.phone, color: Colors.green),
+                          onPressed: () {},
+                        ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.description, color: Colors.orange),
+                        title: const Text('Description'),
+                        subtitle: Text(_trackedParcel!.description),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.fitness_center, color: Colors.purple),
+                        title: const Text('Poids'),
+                        subtitle: Text('${_trackedParcel!.weight} kg'),
+                      ),
+                      if (_trackedParcel!.driverName != null)
+                        ListTile(
+                          leading: const Icon(Icons.delivery_dining, color: Colors.green),
+                          title: const Text('Chauffeur'),
+                          subtitle: Text(_trackedParcel!.driverName!),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.phone, color: Colors.green),
+                            onPressed: () {},
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
+              
+              const SizedBox(height: 16),
+              // Actions
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {},
+                      icon: const Icon(Icons.share),
+                      label: const Text('Partager'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {},
+                      icon: const Icon(Icons.download),
+                      label: const Text('Reçu'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
-      ),
-    );
-  }
-
-  void _showParcelDetails(Parcel parcel) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => _ParcelDetailsSheet(parcel: parcel),
-    );
-  }
-
-  @override
-  void dispose() {
-    _trackingController.dispose();
-    super.dispose();
-  }
-}
-
-// Widget pour afficher les détails du colis
-class _ParcelDetailsSheet extends StatelessWidget {
-  final Parcel parcel;
-
-  const _ParcelDetailsSheet({required this.parcel});
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.5,
-      maxChildSize: 0.9,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: Text(
-                  'Suivi de colis',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF0B6E3A),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _DetailRow(
-                icon: Icons.local_shipping,
-                label: 'Numéro de suivi',
-                value: parcel.trackingNumber,
-              ),
-              const Divider(),
-              _DetailRow(
-                icon: Icons.person,
-                label: 'Expéditeur',
-                value: parcel.senderName,
-              ),
-              const Divider(),
-              _DetailRow(
-                icon: Icons.person_outline,
-                label: 'Destinataire',
-                value: parcel.receiverName,
-              ),
-              const Divider(),
-              _DetailRow(
-                icon: Icons.phone,
-                label: 'Téléphone destinataire',
-                value: parcel.receiverPhone,
-              ),
-              const Divider(),
-              _DetailRow(
-                icon: Icons.description,
-                label: 'Description',
-                value: parcel.description,
-              ),
-              const Divider(),
-              _DetailRow(
-                icon: Icons.fitness_center,
-                label: 'Poids',
-                value: '${parcel.weight} kg',
-              ),
-              const Divider(),
-              _DetailRow(
-                icon: Icons.label,
-                label: 'Type',
-                value: parcel.type.label,
-              ),
-              const Divider(),
-              _DetailRow(
-                icon: Icons.timeline,
-                label: 'Statut',
-                value: parcel.status.label,
-                valueColor: _getStatusColor(parcel.status),
-              ),
-              const Divider(),
-              _DetailRow(
-                icon: Icons.calendar_today,
-                label: 'Date de création',
-                value: _formatDate(parcel.createdAt),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} à ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-  }
-
-  Color _getStatusColor(ParcelStatus status) {
-    switch (status) {
-      case ParcelStatus.delivered:
-        return Colors.green;
-      case ParcelStatus.inTransit:
-      case ParcelStatus.outForDelivery:
-        return Colors.orange;
-      case ParcelStatus.cancelled:
-        return Colors.red;
-      default:
-        return Colors.blue;
-    }
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: valueColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

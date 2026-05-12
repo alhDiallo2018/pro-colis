@@ -66,45 +66,12 @@ class ParcelNotifier extends StateNotifier<ParcelState> {
   Future<Parcel?> updateParcelStatus(String parcelId, String status, {String? location}) async {
     try {
       final parcel = await _apiService.updateParcelStatus(parcelId, status, location: location);
-      // Recharger la liste appropriée selon le rôle
-      await loadDriverParcels();
+      // Recharger la liste après mise à jour
+      await loadMyParcels();
       return parcel;
     } catch (e) {
       state = ParcelState.error(e.toString());
       return null;
-    }
-  }
-
-  // Marquer un colis comme ramassé
-  Future<void> markAsPickedUp(String parcelId) async {
-    state = ParcelState.loading();
-    try {
-      await _apiService.updateParcelStatus(parcelId, 'picked_up', location: 'Au garage');
-      await loadDriverParcels();
-    } catch (e) {
-      state = ParcelState.error(e.toString());
-    }
-  }
-
-  // Marquer un colis comme en transit
-  Future<void> markAsInTransit(String parcelId) async {
-    state = ParcelState.loading();
-    try {
-      await _apiService.updateParcelStatus(parcelId, 'in_transit');
-      await loadDriverParcels();
-    } catch (e) {
-      state = ParcelState.error(e.toString());
-    }
-  }
-
-  // Marquer un colis comme livré
-  Future<void> markAsDelivered(String parcelId) async {
-    state = ParcelState.loading();
-    try {
-      await _apiService.updateParcelStatus(parcelId, 'delivered', location: 'Au destinataire');
-      await loadDriverParcels();
-    } catch (e) {
-      state = ParcelState.error(e.toString());
     }
   }
 
@@ -116,6 +83,39 @@ class ParcelNotifier extends StateNotifier<ParcelState> {
     } catch (e) {
       state = ParcelState.error(e.toString());
       return [];
+    }
+  }
+
+  // Marquer un colis comme ramassé (chauffeur)
+  Future<void> markAsPickedUp(String parcelId) async {
+    state = ParcelState.loading();
+    try {
+      await _apiService.updateParcelStatus(parcelId, 'picked_up', location: 'Au garage');
+      await loadDriverParcels();
+    } catch (e) {
+      state = ParcelState.error(e.toString());
+    }
+  }
+
+  // Marquer un colis comme en transit (chauffeur)
+  Future<void> markAsInTransit(String parcelId) async {
+    state = ParcelState.loading();
+    try {
+      await _apiService.updateParcelStatus(parcelId, 'in_transit');
+      await loadDriverParcels();
+    } catch (e) {
+      state = ParcelState.error(e.toString());
+    }
+  }
+
+  // Marquer un colis comme livré (chauffeur)
+  Future<void> markAsDelivered(String parcelId) async {
+    state = ParcelState.loading();
+    try {
+      await _apiService.updateParcelStatus(parcelId, 'delivered', location: 'Au destinataire');
+      await loadDriverParcels();
+    } catch (e) {
+      state = ParcelState.error(e.toString());
     }
   }
 

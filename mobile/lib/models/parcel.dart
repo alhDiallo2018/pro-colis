@@ -1,16 +1,21 @@
+import 'package:flutter/material.dart';
+
+import 'payment.dart'; // Importer PaymentMethod depuis payment.dart
+
 enum ParcelStatus {
-  pending('pending', 'En attente'),
-  confirmed('confirmed', 'Confirmé'),
-  pickedUp('picked_up', 'Ramassé'),
-  inTransit('in_transit', 'En transit'),
-  arrived('arrived', 'Arrivé'),
-  outForDelivery('out_for_delivery', 'En livraison'),
-  delivered('delivered', 'Livré'),
-  cancelled('cancelled', 'Annulé');
+  pending('pending', 'En attente', Colors.orange),
+  confirmed('confirmed', 'Confirmé', Colors.blue),
+  pickedUp('picked_up', 'Ramassé', Colors.purple),
+  inTransit('in_transit', 'En transit', Colors.indigo),
+  arrived('arrived', 'Arrivé', Colors.teal),
+  outForDelivery('out_for_delivery', 'En livraison', Colors.lightBlue),
+  delivered('delivered', 'Livré', Colors.green),
+  cancelled('cancelled', 'Annulé', Colors.red);
 
   final String value;
   final String label;
-  const ParcelStatus(this.value, this.label);
+  final Color color;
+  const ParcelStatus(this.value, this.label, this.color);
 
   static ParcelStatus fromString(String value) {
     return ParcelStatus.values.firstWhere(
@@ -21,15 +26,16 @@ enum ParcelStatus {
 }
 
 enum ParcelType {
-  document('document', 'Documents'),
-  package('package', 'Colis standard'),
-  fragile('fragile', 'Fragile'),
-  perishable('perishable', 'Périssable'),
-  valuable('valuable', 'Valeur');
+  document('document', 'Documents', Icons.description),
+  package('package', 'Colis standard', Icons.inventory),
+  fragile('fragile', 'Fragile', Icons.warning),
+  perishable('perishable', 'Périssable', Icons.food_bank),
+  valuable('valuable', 'Valeur', Icons.attach_money);
 
   final String value;
   final String label;
-  const ParcelType(this.value, this.label);
+  final IconData icon;
+  const ParcelType(this.value, this.label, this.icon);
 
   static ParcelType fromString(String value) {
     return ParcelType.values.firstWhere(
@@ -39,11 +45,14 @@ enum ParcelType {
   }
 }
 
+// SUPPRIMER PaymentMethod D'ICI - il est déjà dans payment.dart
+
 class Parcel {
   final String id;
   final String trackingNumber;
   final String senderId;
   final String senderName;
+  final String senderPhone;
   final String receiverName;
   final String receiverPhone;
   final String? receiverEmail;
@@ -59,19 +68,21 @@ class Parcel {
   final String? driverName;
   final String? driverPhone;
   final double? price;
+  final PaymentMethod? paymentMethod; // Utilise PaymentMethod depuis payment.dart
   final String? paymentStatus;
   final List<String> photoUrls;
+  final String? signatureUrl;
+  final DateTime? pickupDate;
+  final DateTime? deliveryDate;
   final DateTime createdAt;
-  final DateTime? pickedUpAt;
-  final DateTime? departedAt;
-  final DateTime? arrivedAt;
-  final DateTime? deliveredAt;
+  final DateTime? updatedAt;
 
   Parcel({
     required this.id,
     required this.trackingNumber,
     required this.senderId,
     required this.senderName,
+    required this.senderPhone,
     required this.receiverName,
     required this.receiverPhone,
     this.receiverEmail,
@@ -87,13 +98,14 @@ class Parcel {
     this.driverName,
     this.driverPhone,
     this.price,
+    this.paymentMethod,
     this.paymentStatus,
     this.photoUrls = const [],
+    this.signatureUrl,
+    this.pickupDate,
+    this.deliveryDate,
     required this.createdAt,
-    this.pickedUpAt,
-    this.departedAt,
-    this.arrivedAt,
-    this.deliveredAt,
+    this.updatedAt,
   });
 
   factory Parcel.fromJson(Map<String, dynamic> json) {
@@ -102,6 +114,7 @@ class Parcel {
       trackingNumber: json['trackingNumber'],
       senderId: json['senderId'],
       senderName: json['senderName'],
+      senderPhone: json['senderPhone'],
       receiverName: json['receiverName'],
       receiverPhone: json['receiverPhone'],
       receiverEmail: json['receiverEmail'],
@@ -117,13 +130,16 @@ class Parcel {
       driverName: json['driverName'],
       driverPhone: json['driverPhone'],
       price: json['price']?.toDouble(),
+      paymentMethod: json['paymentMethod'] != null 
+          ? PaymentMethod.fromString(json['paymentMethod'])
+          : null,
       paymentStatus: json['paymentStatus'],
       photoUrls: json['photoUrls'] != null ? List<String>.from(json['photoUrls']) : [],
+      signatureUrl: json['signatureUrl'],
+      pickupDate: json['pickupDate'] != null ? DateTime.parse(json['pickupDate']) : null,
+      deliveryDate: json['deliveryDate'] != null ? DateTime.parse(json['deliveryDate']) : null,
       createdAt: DateTime.parse(json['createdAt']),
-      pickedUpAt: json['pickedUpAt'] != null ? DateTime.parse(json['pickedUpAt']) : null,
-      departedAt: json['departedAt'] != null ? DateTime.parse(json['departedAt']) : null,
-      arrivedAt: json['arrivedAt'] != null ? DateTime.parse(json['arrivedAt']) : null,
-      deliveredAt: json['deliveredAt'] != null ? DateTime.parse(json['deliveredAt']) : null,
+      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
     );
   }
 
@@ -132,6 +148,7 @@ class Parcel {
     'trackingNumber': trackingNumber,
     'senderId': senderId,
     'senderName': senderName,
+    'senderPhone': senderPhone,
     'receiverName': receiverName,
     'receiverPhone': receiverPhone,
     'receiverEmail': receiverEmail,
@@ -147,17 +164,18 @@ class Parcel {
     'driverName': driverName,
     'driverPhone': driverPhone,
     'price': price,
+    'paymentMethod': paymentMethod?.value,
     'paymentStatus': paymentStatus,
     'photoUrls': photoUrls,
+    'signatureUrl': signatureUrl,
+    'pickupDate': pickupDate?.toIso8601String(),
+    'deliveryDate': deliveryDate?.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
-    'pickedUpAt': pickedUpAt?.toIso8601String(),
-    'departedAt': departedAt?.toIso8601String(),
-    'arrivedAt': arrivedAt?.toIso8601String(),
-    'deliveredAt': deliveredAt?.toIso8601String(),
+    'updatedAt': updatedAt?.toIso8601String(),
   };
 }
 
-
+// Classe ParcelEvent définie en dehors de la classe Parcel
 class ParcelEvent {
   final String id;
   final String parcelId;

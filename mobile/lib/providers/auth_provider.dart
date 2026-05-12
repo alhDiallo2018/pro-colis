@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/user.dart';
@@ -114,6 +115,62 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _apiService.logout();
     state = AuthState.unauthenticated();
+  }
+
+  // Mise à jour du profil utilisateur
+  Future<Map<String, dynamic>> updateProfile({
+    required String fullName,
+    required String email,
+    required String phone,
+    String? address,
+    String? city,
+    String? region,
+    String? vehiclePlate,
+    String? vehicleModel,
+  }) async {
+    try {
+      final result = await _apiService.updateProfile(
+        fullName: fullName,
+        email: email,
+        phone: phone,
+        address: address,
+        city: city,
+        region: region,
+        vehiclePlate: vehiclePlate,
+        vehicleModel: vehicleModel,
+      );
+      
+      if (result['success'] == true) {
+        await refreshUser();
+      }
+      return result;
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // Mise à jour du PIN
+  Future<Map<String, dynamic>> updatePin({
+    required String currentPin,
+    required String newPin,
+  }) async {
+    try {
+      final result = await _apiService.updatePin(currentPin, newPin);
+      return result;
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // Rafraîchir les informations de l'utilisateur
+  Future<void> refreshUser() async {
+    try {
+      final user = await _apiService.getCurrentUser();
+      state = AuthState.authenticated(user);
+    } catch (e) {
+      // Utiliser debugPrint au lieu de print pour le développement
+      debugPrint('Erreur refresh user: $e');
+    }
   }
 }
 
