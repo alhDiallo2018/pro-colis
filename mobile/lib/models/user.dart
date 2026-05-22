@@ -24,7 +24,7 @@ enum UserRole {
 enum UserStatus {
   active('active', 'Actif', Colors.green),
   suspended('suspended', 'Suspendu', Colors.orange),
-  blocked('blocked', 'Bloqué', Colors.red);
+  deleted('deleted', 'Supprimé', Colors.red);
 
   final String value;
   final String label;
@@ -234,7 +234,7 @@ class User {
   // Propriétés calculées
   bool get isActive => status == UserStatus.active;
   bool get isSuspended => status == UserStatus.suspended;
-  bool get isBlocked => status == UserStatus.blocked;
+  bool get isDeleted => status == UserStatus.deleted;
   
   bool get isSuperAdmin => role == UserRole.superAdmin;
   bool get isAdmin => role == UserRole.admin;

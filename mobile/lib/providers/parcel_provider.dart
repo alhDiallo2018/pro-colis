@@ -65,13 +65,16 @@ class ParcelNotifier extends StateNotifier<ParcelState> {
     }
   }
 
-  // Créer un nouveau colis
+  // Créer un nouveau colis - CORRIGÉ pour ApiService actuel
   Future<Parcel?> createParcel(Map<String, dynamic> data) async {
     state = ParcelState.loading();
     try {
-      final parcel = await _apiService.createParcel(data);
+      // L'API retourne déjà un objet Parcel directement
+      final Parcel parcel = await _apiService.createParcel(data);
+      
       // Recharger la liste après création
       await loadMyParcels();
+      state = ParcelState.loaded(state.parcels);
       return parcel;
     } catch (e) {
       state = ParcelState.error(e.toString());

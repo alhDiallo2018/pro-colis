@@ -298,7 +298,7 @@ class _TrackParcelScreenState extends ConsumerState<TrackParcelScreen> {
                             onPressed: () => _makePhoneCall(_trackedParcel!.driverPhone ?? ''),
                           ),
                         ),
-                      if (_trackedParcel!.departureGarageName != null && _trackedParcel!.departureGarageName!.isNotEmpty)
+                      if (_trackedParcel!.departureGarageName != null && _trackedParcel!.departureGarageName.isNotEmpty)
                         ListTile(
                           leading: const Icon(Icons.departure_board, color: Colors.orange),
                           title: const Text('Départ'),

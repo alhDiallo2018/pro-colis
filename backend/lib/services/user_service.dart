@@ -1,203 +1,155 @@
-// ignore: unused_import
-import 'dart:convert';
-
-import 'package:bcrypt/bcrypt.dart';
+// lib/services/user_service.dart
 import 'package:uuid/uuid.dart';
 
-class User {
-  final String id;
-  final String email;
-  final String phone;
-  final String fullName;
-  final String? passwordHash;
-  final String role;
-  final String? garageId;
-  final bool isEmailVerified;
-  final bool isPhoneVerified;
-  final DateTime createdAt;
-  final DateTime? lastLogin;
-
-  User({
-    required this.id,
-    required this.email,
-    required this.phone,
-    required this.fullName,
-    this.passwordHash,
-    required this.role,
-    this.garageId,
-    this.isEmailVerified = false,
-    this.isPhoneVerified = false,
-    required this.createdAt,
-    this.lastLogin,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'email': email,
-    'phone': phone,
-    'fullName': fullName,
-    'role': role,
-    'garageId': garageId,
-    'isEmailVerified': isEmailVerified,
-    'isPhoneVerified': isPhoneVerified,
-    'createdAt': createdAt.toIso8601String(),
-    'lastLogin': lastLogin?.toIso8601String(),
-  };
-}
+import '../utils/db_helper.dart';
 
 class UserService {
-  final List<User> _users = [];
-  final _uuid = const Uuid();
+  Future<Map<String, dynamic>?> getUserById(String userId) async {
+  final db = await DbHelper.getInstance();
   
-  Future<User> createUser({
-    required String email,
-    required String phone,
-    required String fullName,
-    String? password,
-    String role = 'client',
-  }) async {
-    final user = User(
-      id: _uuid.v4(),
-      email: email,
-      phone: phone,
-      fullName: fullName,
-      passwordHash: password != null ? BCrypt.hashpw(password, BCrypt.gensalt()) : null,
-      role: role,
-      createdAt: DateTime.now(),
-    );
+  try {
+    final result = await db.connection.execute('''
+      SELECT id, email, phone, full_name, role, status, address, city, region, 
+             vehicle_plate, vehicle_model, vehicle_color, vehicle_year,
+             driver_status, garage_id, profile_photo, created_at, updated_at, last_login
+      FROM users WHERE id = \$1
+    ''', parameters: [userId]);
     
-    _users.add(user);
-    return user;
-  }
-  
-  Future<User?> findByEmail(String email) async {
-    try {
-      return _users.firstWhere((u) => u.email == email);
-    } catch (e) {
-      return null;
-    }
-  }
-  
-  Future<User?> findByPhone(String phone) async {
-    try {
-      return _users.firstWhere((u) => u.phone == phone);
-    } catch (e) {
-      return null;
-    }
-  }
-  
-  Future<User?> getUser(String id) async {
-    try {
-      return _users.firstWhere((u) => u.id == id);
-    } catch (e) {
-      return null;
-    }
-  }
-  
-  Future<User?> getUserByEmailOrPhone(String identifier) async {
-    User? user = await findByEmail(identifier);
-    if (user == null) {
-      user = await findByPhone(identifier);
-    }
-    return user;
-  }
-  
-  Future<User?> updateUser(String id, Map<String, dynamic> data) async {
-    final index = _users.indexWhere((u) => u.id == id);
-    if (index == -1) return null;
+    if (result.isEmpty) return null;
     
-    final oldUser = _users[index];
-    final updatedUser = User(
-      id: oldUser.id,
-      email: data['email'] ?? oldUser.email,
-      phone: data['phone'] ?? oldUser.phone,
-      fullName: data['fullName'] ?? oldUser.fullName,
-      passwordHash: data['password'] != null 
-          ? BCrypt.hashpw(data['password'], BCrypt.gensalt())
-          : oldUser.passwordHash,
-      role: data['role'] ?? oldUser.role,
-      garageId: data['garageId'] ?? oldUser.garageId,
-      isEmailVerified: data['isEmailVerified'] ?? oldUser.isEmailVerified,
-      isPhoneVerified: data['isPhoneVerified'] ?? oldUser.isPhoneVerified,
-      createdAt: oldUser.createdAt,
-      lastLogin: DateTime.now(),
-    );
-    
-    _users[index] = updatedUser;
-    return updatedUser;
-  }
-  
-  Future<void> updateLastLogin(String userId) async {
-    final index = _users.indexWhere((u) => u.id == userId);
-    if (index != -1) {
-      _users[index] = User(
-        id: _users[index].id,
-        email: _users[index].email,
-        phone: _users[index].phone,
-        fullName: _users[index].fullName,
-        passwordHash: _users[index].passwordHash,
-        role: _users[index].role,
-        garageId: _users[index].garageId,
-        isEmailVerified: _users[index].isEmailVerified,
-        isPhoneVerified: _users[index].isPhoneVerified,
-        createdAt: _users[index].createdAt,
-        lastLogin: DateTime.now(),
-      );
-    }
-  }
-  
-  Future<Map<String, dynamic>> getAllUsers({
-    int page = 1,
-    int limit = 20,
-    String? role,
-    String? status,
-    String? search,
-  }) async {
-    List<User> filtered = List.from(_users);
-    
-    if (role != null) {
-      filtered = filtered.where((u) => u.role == role).toList();
-    }
-    
-    if (search != null) {
-      filtered = filtered.where((u) => 
-        u.fullName.toLowerCase().contains(search.toLowerCase()) ||
-        u.email.toLowerCase().contains(search.toLowerCase()) ||
-        u.phone.contains(search)
-      ).toList();
-    }
-    
-    final total = filtered.length;
-    final pages = (total / limit).ceil();
-    final start = (page - 1) * limit;
-    final end = start + limit;
-    final paginated = filtered.sublist(start, end > total ? total : end);
-    
+    final row = result.first;
     return {
-      'users': paginated.map((u) => u.toJson()).toList(),
-      'total': total,
-      'pages': pages,
+      'id': row[0],
+      'email': row[1],
+      'phone': row[2],
+      'fullName': row[3],
+      'role': row[4],
+      'status': row[5],
+      'address': row[6] ?? '',
+      'city': row[7] ?? '',
+      'region': row[8] ?? '',
+      'vehiclePlate': row[9] ?? '',
+      'vehicleModel': row[10] ?? '',
+      'vehicleColor': row[11] ?? '',
+      'vehicleYear': row[12],
+      'driverStatus': row[13],
+      'garageId': row[14],
+      'profilePhoto': row[15],
+      'createdAt': (row[16] as DateTime).toIso8601String(),
+      'updatedAt': (row[17] as DateTime).toIso8601String(),
+      'lastLogin': row[18] != null ? (row[18] as DateTime).toIso8601String() : null,
     };
+  } catch (e) {
+    print('❌ Erreur getUserById: $e');
+    return null;
+  }
+}
+  
+  Future<List<Map<String, dynamic>>> getAllUsers() async {
+    final db = await DbHelper.getInstance();
+    
+    try {
+      final result = await db.connection.execute('''
+        SELECT id, email, phone, full_name, role, status, created_at
+        FROM users ORDER BY created_at DESC
+      ''');
+      
+      return result.map((row) => ({
+        'id': row[0], 'email': row[1], 'phone': row[2], 'fullName': row[3],
+        'role': row[4], 'status': row[5],
+        'createdAt': (row[6] as DateTime).toIso8601String(),
+      })).toList();
+    } catch (e) {
+      return [];
+    }
   }
   
-  Future<User?> updateUserRole(String id, String newRole) async {
-    return await updateUser(id, {'role': newRole});
+  Future<void> updateProfile(String userId, Map<String, dynamic> data) async {
+    final db = await DbHelper.getInstance();
+    
+    await db.connection.execute('''
+      UPDATE users SET full_name = \$2, email = \$3, phone = \$4, 
+             address = \$5, city = \$6, region = \$7, updated_at = NOW()
+      WHERE id = \$1
+    ''', parameters: [
+      userId, data['fullName'], data['email'], data['phone'],
+      data['address'], data['city'], data['region']
+    ]);
   }
   
-  Future<bool> deleteUser(String id) async {
-    final index = _users.indexWhere((u) => u.id == id);
-    if (index == -1) return false;
-    _users.removeAt(index);
-    return true;
+  Future<void> updatePin(String userId, String currentPin, String newPin) async {
+    final db = await DbHelper.getInstance();
+    
+    // Vérifier l'ancien PIN
+    final checkResult = await db.connection.execute(
+      'SELECT pin FROM users WHERE id = \$1 AND pin = \$2',
+      parameters: [userId, currentPin],
+    );
+    
+    if (checkResult.isEmpty) {
+      throw Exception('PIN actuel incorrect');
+    }
+    
+    await db.connection.execute(
+      'UPDATE users SET pin = \$2, updated_at = NOW() WHERE id = \$1',
+      parameters: [userId, newPin],
+    );
   }
   
-  Future<void> invalidateTokens(String userId) async {
-    // Dans une implémentation réelle, on invaliderait les tokens dans Redis/DB
+  Future<String> createUser(Map<String, dynamic> data) async {
+    final db = await DbHelper.getInstance();
+    final userId = const Uuid().v4();
+    
+    await db.connection.execute('''
+      INSERT INTO users (id, email, phone, full_name, role, status, pin, address, city, region,
+                         vehicle_plate, vehicle_model, driver_status, garage_id, created_at, updated_at)
+      VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, NOW(), NOW())
+    ''', parameters: [
+      userId, data['email'], data['phone'], data['fullName'],
+      data['role'] ?? 'client', data['status'] ?? 'active', data['pin'] ?? '123456',
+      data['address'], data['city'], data['region'],
+      data['vehiclePlate'], data['vehicleModel'], data['driverStatus'], data['garageId']
+    ]);
+    
+    return userId;
   }
   
-  Future<bool> verifyPassword(String email, String password) async {
-    final user = await findByEmail(email);
-    if (user == null || user.passwordHash == null) return false;
-    return BCrypt.checkpw(password, user.passwordHash!);
+  Future<void> updateUser(String userId, Map<String, dynamic> data) async {
+    final db = await DbHelper.getInstance();
+    
+    await db.connection.execute('''
+      UPDATE users SET full_name = \$2, email = \$3, phone = \$4, role = \$5, status = \$6,
+             address = \$7, city = \$8, region = \$9, vehicle_plate = \$10,
+             vehicle_model = \$11, driver_status = \$12, garage_id = \$13, updated_at = NOW()
+      WHERE id = \$1
+    ''', parameters: [
+      userId, data['fullName'], data['email'], data['phone'], data['role'], data['status'],
+      data['address'], data['city'], data['region'], data['vehiclePlate'],
+      data['vehicleModel'], data['driverStatus'], data['garageId']
+    ]);
+  }
+  
+  Future<void> updateUserRole(String userId, String role) async {
+    final db = await DbHelper.getInstance();
+    
+    await db.connection.execute(
+      'UPDATE users SET role = \$2, updated_at = NOW() WHERE id = \$1',
+      parameters: [userId, role],
+    );
+  }
+  
+  Future<void> updateUserStatus(String userId, String status) async {
+    final db = await DbHelper.getInstance();
+    
+    await db.connection.execute(
+      'UPDATE users SET status = \$2, updated_at = NOW() WHERE id = \$1',
+      parameters: [userId, status],
+    );
+  }
+  
+  Future<void> deleteUser(String userId) async {
+    final db = await DbHelper.getInstance();
+    
+    await db.connection.execute('DELETE FROM users WHERE id = \$1', parameters: [userId]);
   }
 }

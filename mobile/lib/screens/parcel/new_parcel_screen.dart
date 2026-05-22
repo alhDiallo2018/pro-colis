@@ -1,8 +1,16 @@
+// mobile/lib/screens/parcel/new_parcel_screen.dart
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../models/garage.dart';
 import '../../models/parcel.dart';
+import '../../models/user.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/parcel_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/custom_button.dart';
@@ -34,18 +42,51 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
   final _priceController = TextEditingController();
   ParcelType _selectedType = ParcelType.package;
   
-  // Lieux (stocker les IDs UUID)
+  // Lieux
   String? _selectedDepartureGarageId;
   String? _selectedArrivalGarageId;
+  
+  // Chauffeur
+  String? _selectedDriverId;
+  List<User> _availableDrivers = [];
+  bool _isSearchingDrivers = false;
+  final TextEditingController _driverSearchController = TextEditingController();
   
   bool _isLoading = false;
   bool _urgentDelivery = false;
   bool _insurance = false;
+  
+  // Médias - Support Web et Mobile
+  final List<dynamic> _photos = [];
+  final List<String> _photoUrls = [];
+  final List<dynamic> _videos = [];
+  final List<String> _videoUrls = [];
+  final ImagePicker _picker = ImagePicker();
+  
+  // Contrôleurs vidéo pour mobile
+  final Map<String, VideoPlayerController> _videoControllers = {};
+  final Map<String, bool> _videoInitialized = {};
 
   @override
   void initState() {
     super.initState();
     _loadGarages();
+    _loadAvailableDrivers();
+  }
+
+  @override
+  void dispose() {
+    _receiverNameController.dispose();
+    _receiverPhoneController.dispose();
+    _receiverEmailController.dispose();
+    _descriptionController.dispose();
+    _weightController.dispose();
+    _priceController.dispose();
+    _driverSearchController.dispose();
+    for (var controller in _videoControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _loadGarages() async {
@@ -60,9 +101,6 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
         _isLoadingGarages = false;
       });
       debugPrint('✅ ${garages.length} garages chargés depuis l\'API');
-      for (var garage in garages) {
-        debugPrint('Garage: ${garage.name} - ID: ${garage.id}');
-      }
     } catch (e) {
       setState(() {
         _isLoadingGarages = false;
@@ -76,17 +114,568 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _receiverNameController.dispose();
-    _receiverPhoneController.dispose();
-    _receiverEmailController.dispose();
-    _descriptionController.dispose();
-    _weightController.dispose();
-    _priceController.dispose();
-    super.dispose();
+  // Récupérer les chauffeurs via l'API publique
+  Future<void> _loadAvailableDrivers() async {
+    setState(() {
+      _isSearchingDrivers = true;
+    });
+    
+    try {
+      // Utiliser l'API publique pour rechercher des chauffeurs
+      final drivers = await _apiService.searchDriversPublic();
+      setState(() {
+        _availableDrivers = drivers;
+        _isSearchingDrivers = false;
+      });
+      debugPrint('✅ ${drivers.length} chauffeurs chargés via API publique');
+    } catch (e) {
+      debugPrint('❌ Erreur chargement chauffeurs: $e');
+      setState(() {
+        _availableDrivers = [];
+        _isSearchingDrivers = false;
+      });
+    }
   }
 
+  // Rechercher un chauffeur par critères (ID, email, téléphone)
+  Future<void> _searchDriver() async {
+    final query = _driverSearchController.text.trim();
+    
+    if (query.isEmpty) {
+      await _loadAvailableDrivers();
+      return;
+    }
+    
+    setState(() {
+      _isSearchingDrivers = true;
+    });
+    
+    try {
+      // Utiliser l'API publique pour rechercher des chauffeurs par critères
+      final drivers = await _apiService.searchDriversPublic(query: query);
+      
+      setState(() {
+        _availableDrivers = drivers;
+        _isSearchingDrivers = false;
+      });
+      debugPrint('✅ ${drivers.length} chauffeurs trouvés pour la recherche: $query');
+    } catch (e) {
+      debugPrint('❌ Erreur recherche chauffeur: $e');
+      setState(() {
+        _isSearchingDrivers = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur recherche: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // ==================== GESTION DES PHOTOS ====================
+  
+  Future<void> _pickPhoto() async {
+    try {
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+      if (photo != null) {
+        setState(() {
+          _photos.add(photo);
+          _photoUrls.add(photo.path);
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors de la sélection de la photo: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _takePhoto() async {
+    try {
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
+      );
+      if (photo != null) {
+        setState(() {
+          _photos.add(photo);
+          _photoUrls.add(photo.path);
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors de la prise de photo: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    try {
+      final XFile? video = await _picker.pickVideo(
+        source: ImageSource.gallery,
+      );
+      if (video != null) {
+        setState(() {
+          _videos.add(video);
+          _videoUrls.add(video.path);
+          if (!kIsWeb) {
+            _initializeVideoController(video);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors de la sélection de la vidéo: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _recordVideo() async {
+    try {
+      final XFile? video = await _picker.pickVideo(
+        source: ImageSource.camera,
+      );
+      if (video != null) {
+        setState(() {
+          _videos.add(video);
+          _videoUrls.add(video.path);
+          if (!kIsWeb) {
+            _initializeVideoController(video);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors de l\'enregistrement vidéo: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _initializeVideoController(XFile video) async {
+    if (kIsWeb) return;
+    
+    final controller = VideoPlayerController.file(File(video.path));
+    await controller.initialize();
+    if (mounted) {
+      setState(() {
+        _videoControllers[video.path] = controller;
+        _videoInitialized[video.path] = true;
+      });
+    }
+  }
+
+  void _removePhoto(int index) {
+    setState(() {
+      _photos.removeAt(index);
+      _photoUrls.removeAt(index);
+    });
+  }
+
+  void _removeVideo(int index) {
+    final videoPath = _videos[index].path;
+    setState(() {
+      _videos.removeAt(index);
+      _videoUrls.removeAt(index);
+    });
+    if (!kIsWeb) {
+      _videoControllers[videoPath]?.dispose();
+      _videoControllers.remove(videoPath);
+      _videoInitialized.remove(videoPath);
+    }
+  }
+
+  // ==================== AFFICHAGE DES MÉDIAS ====================
+  
+  Widget _buildMediaSection() {
+    return _buildSection(
+      icon: Icons.photo_library,
+      title: 'Photos et vidéos',
+      color: Colors.teal,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildMediaButton(
+                  icon: Icons.photo_library,
+                  label: 'Galerie photo',
+                  onTap: _pickPhoto,
+                  color: Colors.blue,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildMediaButton(
+                  icon: Icons.camera_alt,
+                  label: 'Appareil photo',
+                  onTap: _takePhoto,
+                  color: Colors.green,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMediaButton(
+                  icon: Icons.video_library,
+                  label: 'Galerie vidéo',
+                  onTap: _pickVideo,
+                  color: Colors.orange,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildMediaButton(
+                  icon: Icons.videocam,
+                  label: 'Enregistrer',
+                  onTap: _recordVideo,
+                  color: Colors.red,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          if (_photoUrls.isNotEmpty) ...[
+            const Text('Photos', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _photoUrls.length,
+                itemBuilder: (context, index) {
+                  return _buildPhotoThumbnail(_photoUrls[index], index);
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          
+          if (_videoUrls.isNotEmpty) ...[
+            const Text('Vidéos', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _videoUrls.length,
+                itemBuilder: (context, index) {
+                  return _buildVideoThumbnail(_videoUrls[index], index);
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMediaButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label, style: TextStyle(color: color)),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  Widget _buildPhotoThumbnail(String url, int index) {
+    return Stack(
+      children: [
+        Container(
+          margin: const EdgeInsets.only(right: 8),
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            image: DecorationImage(
+              image: _getImageProvider(url),
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: () => _removePhoto(index),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(150),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close, size: 20, color: Colors.white),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVideoThumbnail(String url, int index) {
+    final isInitialized = _videoInitialized[url] ?? false;
+    final controller = _videoControllers[url];
+    
+    return Stack(
+      children: [
+        Container(
+          margin: const EdgeInsets.only(right: 8),
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.black,
+          ),
+          child: Center(
+            child: !kIsWeb && isInitialized && controller != null
+                ? Stack(
+                    children: [
+                      VideoPlayer(controller),
+                      Center(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withAlpha(100),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            size: 30,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Stack(
+                    children: [
+                      Image.network(
+                        url,
+                        width: 100,
+                        height: 100,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[900],
+                            child: const Icon(Icons.videocam, size: 40, color: Colors.white54),
+                          );
+                        },
+                      ),
+                      Center(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withAlpha(100),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            size: 30,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: () => _removeVideo(index),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(150),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close, size: 20, color: Colors.white),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  ImageProvider _getImageProvider(String url) {
+    if (kIsWeb) {
+      return NetworkImage(url);
+    } else {
+      return FileImage(File(url));
+    }
+  }
+
+  // ==================== SECTION CHAUFFEUR ====================
+  // La section chauffeur n'est affichée QUE pour les clients
+  
+  Widget _buildDriverSection() {
+    final authState = ref.watch(authProvider);
+    final isClient = authState.user?.role == UserRole.client;
+    
+    // Seuls les clients peuvent choisir un chauffeur
+    // Les chauffeurs seront assignés automatiquement par l'admin garage
+    if (!isClient) {
+      return const SizedBox.shrink();
+    }
+    
+    return _buildSection(
+      icon: Icons.delivery_dining,
+      title: 'Choisir un chauffeur (optionnel)',
+      color: Colors.amber,
+      child: Column(
+        children: [
+          // Message d'information
+          Container(
+            padding: const EdgeInsets.all(8),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withAlpha(25),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info, size: 16, color: Colors.blue),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Si vous ne choisissez pas de chauffeur, l\'administration du garage vous en assignera un automatiquement.',
+                    style: TextStyle(fontSize: 12, color: Colors.blue),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Champ de recherche
+          Row(
+            children: [
+              Expanded(
+                child: CustomTextField(
+                  controller: _driverSearchController,
+                  label: 'Rechercher par ID, Email ou Téléphone',
+                  prefixIcon: Icons.search,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: _searchDriver,
+                color: const Color(0xFF0B6E3A),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Liste des chauffeurs disponibles
+          if (_isSearchingDrivers)
+            const Center(child: CircularProgressIndicator())
+          else if (_availableDrivers.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Aucun chauffeur trouvé'),
+            )
+          else
+            Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.4,
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _availableDrivers.length,
+                itemBuilder: (context, index) {
+                  final driver = _availableDrivers[index];
+                  final isSelected = _selectedDriverId == driver.id;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    color: isSelected ? Colors.green.withAlpha(25) : null,
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: isSelected ? Colors.green : Colors.grey,
+                        child: const Icon(Icons.person, color: Colors.white),
+                      ),
+                      title: Text(
+                        driver.fullName,
+                        style: TextStyle(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('ID: ${driver.id.substring(0, 8)}...'),
+                          Text('Email: ${driver.email}'),
+                          Text('Tél: ${driver.phone}'),
+                          if (driver.vehiclePlate != null)
+                            Text('Véhicule: ${driver.vehiclePlate}'),
+                        ],
+                      ),
+                      trailing: isSelected
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : const Icon(Icons.radio_button_unchecked),
+                      onTap: () {
+                        setState(() {
+                          _selectedDriverId = driver.id;
+                        });
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          
+          if (_selectedDriverId != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.withAlpha(25),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Chauffeur sélectionné: ${_availableDrivers.firstWhere((d) => d.id == _selectedDriverId).fullName}',
+                      style: const TextStyle(color: Colors.green),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ==================== CRÉATION DU COLIS ====================
+  
   Future<void> _createParcel() async {
     if (!_formKey.currentState!.validate()) return;
     
@@ -99,11 +688,19 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
     
     setState(() => _isLoading = true);
     
-    // Récupérer les noms des garages sélectionnés
     final departureGarage = _garages.firstWhere((g) => g.id == _selectedDepartureGarageId);
     final arrivalGarage = _selectedArrivalGarageId != null 
         ? _garages.firstWhere((g) => g.id == _selectedArrivalGarageId)
         : departureGarage;
+    
+    // Récupérer les informations du chauffeur sélectionné
+    User? selectedDriver;
+    if (_selectedDriverId != null) {
+      selectedDriver = _availableDrivers.firstWhere(
+        (d) => d.id == _selectedDriverId,
+        orElse: () => throw Exception('Chauffeur non trouvé'),
+      );
+    }
     
     final data = {
       'receiverName': _receiverNameController.text.trim(),
@@ -119,6 +716,12 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
       'price': double.tryParse(_priceController.text) ?? 0,
       'urgent': _urgentDelivery,
       'insurance': _insurance,
+      'photoUrls': _photoUrls,
+      'videoUrls': _videoUrls,
+      // Ajouter le chauffeur si sélectionné
+      'driverId': selectedDriver?.id,
+      'driverName': selectedDriver?.fullName,
+      'driverPhone': selectedDriver?.phone,
     };
     
     try {
@@ -131,8 +734,9 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
       if (result != null && mounted) {
         _showSuccessDialog(result);
       } else if (mounted) {
+        final errorState = ref.read(parcelProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur lors de la création du colis'), backgroundColor: Colors.red),
+          SnackBar(content: Text(errorState.error ?? 'Erreur lors de la création du colis'), backgroundColor: Colors.red),
         );
       }
     } catch (e) {
@@ -166,11 +770,21 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
               parcel.trackingNumber,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
             ),
+            if (_selectedDriverId != null) ...[
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text('Chauffeur assigné :'),
+              const SizedBox(height: 4),
+              Text(
+                _availableDrivers.firstWhere((d) => d.id == _selectedDriverId).fullName,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Un email de confirmation a été envoyé',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
             ),
           ],
         ),
@@ -178,7 +792,7 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context);
+              Navigator.pop(context, parcel);
             },
             child: const Text('OK'),
           ),
@@ -201,14 +815,30 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
     _descriptionController.clear();
     _weightController.clear();
     _priceController.clear();
+    _driverSearchController.clear();
     setState(() {
       _selectedType = ParcelType.package;
       _selectedDepartureGarageId = null;
       _selectedArrivalGarageId = null;
+      _selectedDriverId = null;
       _urgentDelivery = false;
       _insurance = false;
+      _photos.clear();
+      _videos.clear();
+      _photoUrls.clear();
+      _videoUrls.clear();
     });
+    _loadAvailableDrivers();
+    if (!kIsWeb) {
+      for (var controller in _videoControllers.values) {
+        controller.dispose();
+      }
+      _videoControllers.clear();
+      _videoInitialized.clear();
+    }
   }
+
+  // ==================== BUILD ====================
 
   @override
   Widget build(BuildContext context) {
@@ -345,7 +975,7 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
                             validator: (v) => v == null ? 'Champ requis' : null,
                           ),
                           const SizedBox(height: 12),
-                          DropdownButtonFormField<String>(
+                          DropdownButtonFormField<String?>(
                             initialValue: _selectedArrivalGarageId,
                             hint: const Text('Sélectionnez le garage d\'arrivée (optionnel)'),
                             decoration: const InputDecoration(
@@ -367,7 +997,15 @@ class _NewParcelScreenState extends ConsumerState<NewParcelScreen> {
                     ),
                     const SizedBox(height: 16),
                     
-                    // Options supplémentaires
+                    // Section Chauffeur (visible uniquement pour les clients)
+                    _buildDriverSection(),
+                    const SizedBox(height: 16),
+                    
+                    // Section Médias
+                    _buildMediaSection(),
+                    const SizedBox(height: 16),
+                    
+                    // Section Options
                     _buildSection(
                       icon: Icons.settings,
                       title: 'Options',

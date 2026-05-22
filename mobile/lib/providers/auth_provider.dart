@@ -1,3 +1,5 @@
+// mobile/lib/providers/auth_provider.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,9 +11,50 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
 });
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier() : super(AuthState.initial());
+  AuthNotifier() : super(AuthState.initial()) {
+    _loadUser(); // ← CORRECTION: Appel au chargement initial
+  }
 
   final ApiService _apiService = ApiService();
+
+  // ==================== CHARGEMENT INITIAL ====================
+  Future<void> _loadUser() async {
+    print('🔄 [AUTH] _loadUser - Chargement initial');
+    
+    try {
+      // Vérifier si un token existe
+      final token = await _apiService.getToken();
+      if (token == null || token.isEmpty) {
+        print('⚠️ [AUTH] Aucun token trouvé');
+        state = AuthState.unauthenticated();
+        return;
+      }
+      
+      final user = await _apiService.getCurrentUser();
+      
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('✅ [AUTH] Utilisateur chargé avec succès:');
+      print('   ├─ id: ${user.id}');
+      print('   ├─ fullName: ${user.fullName}');
+      print('   ├─ email: ${user.email}');
+      print('   ├─ phone: ${user.phone}');
+      print('   ├─ role: ${user.role.label}');
+      print('   ├─ address: ${user.address}');
+      print('   ├─ city: ${user.city}');
+      print('   ├─ region: ${user.region}');
+      print('   ├─ profilePhoto: ${user.profilePhoto}');
+      print('   └─ garageId: ${user.garageId}');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      state = AuthState.authenticated(user);
+    } catch (e) {
+      print('❌ [AUTH] Erreur lors du chargement: $e');
+      await _apiService.clearToken();
+      state = AuthState.unauthenticated();
+    }
+  }
+
+  // ==================== AUTHENTIFICATION ====================
 
   Future<Map<String, dynamic>> sendOtp({required String identifier}) async {
     state = AuthState.loading();
@@ -30,39 +73,38 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<Map<String, dynamic>> verifyOtp({
-  required String userId,
-  required String code,
-  required String type,
-}) async {
-  try {
-    final result = await _apiService.verifyOtp(userId, code, type);
-    print('🔐 Résultat verifyOtp: $result');
-    
-    if (result['success'] == true) {
-      print('✅ OTP vérifié avec succès');
-      print('📦 AccessToken reçu: ${result['accessToken']}');
+    required String userId,
+    required String code,
+    required String type,
+  }) async {
+    try {
+      final result = await _apiService.verifyOtp(userId, code, type);
+      print('🔐 Résultat verifyOtp: $result');
       
-      final userData = result['user'];
-      if (userData != null) {
-        final user = User.fromJson(userData);
-        state = AuthState.authenticated(user);
-        print('👤 Utilisateur authentifié: ${user.fullName}');
+      if (result['success'] == true) {
+        print('✅ OTP vérifié avec succès');
+        print('📦 AccessToken reçu: ${result['accessToken']}');
+        
+        final userData = result['user'];
+        if (userData != null) {
+          final user = User.fromJson(userData);
+          state = AuthState.authenticated(user);
+          print('👤 Utilisateur authentifié: ${user.fullName}');
+        } else {
+          state = AuthState.authenticated(null);
+        }
       } else {
-        state = AuthState.authenticated(null);
+        print('❌ Échec vérification OTP: ${result['message']}');
+        state = AuthState.error(result['message'] ?? 'Code invalide');
       }
-    } else {
-      print('❌ Échec vérification OTP: ${result['message']}');
-      state = AuthState.error(result['message'] ?? 'Code invalide');
+      return result;
+    } catch (e) {
+      print('❌ Exception verifyOtp: $e');
+      state = AuthState.error(e.toString());
+      return {'success': false, 'message': e.toString()};
     }
-    return result;
-  } catch (e) {
-    print('❌ Exception verifyOtp: $e');
-    state = AuthState.error(e.toString());
-    return {'success': false, 'message': e.toString()};
   }
-}
 
-  // MÉTHODE REGISTER COMPLÈTE (avec tous les paramètres optionnels)
   Future<Map<String, dynamic>> register({
     required String email,
     required String phone,
@@ -110,6 +152,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (result['success'] == true) {
         final user = User.fromJson(result['user']);
         state = AuthState.authenticated(user);
+        print('👤 Utilisateur connecté: ${user.fullName}');
       } else {
         state = AuthState.error(result['message'] ?? 'PIN incorrect');
       }
@@ -123,9 +166,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _apiService.logout();
     state = AuthState.unauthenticated();
+    print('👋 Utilisateur déconnecté');
   }
 
-  // Mise à jour du profil utilisateur
+  // ==================== GESTION DU PROFIL ====================
+
   Future<Map<String, dynamic>> updateProfile({
     required String fullName,
     required String email,
@@ -157,7 +202,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  // Mise à jour du PIN
   Future<Map<String, dynamic>> updatePin({
     required String currentPin,
     required String newPin,
@@ -170,17 +214,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  // Rafraîchir les informations de l'utilisateur
   Future<void> refreshUser() async {
     try {
+      print('🔄 [AUTH] refreshUser - Rafraîchissement');
       final user = await _apiService.getCurrentUser();
+      print('✅ [AUTH] Utilisateur rafraîchi: ${user.fullName}');
+      print('   address: ${user.address}');
+      print('   city: ${user.city}');
+      print('   region: ${user.region}');
       state = AuthState.authenticated(user);
     } catch (e) {
-      // Utiliser debugPrint au lieu de print pour le développement
-      debugPrint('Erreur refresh user: $e');
+      debugPrint('❌ Erreur refresh user: $e');
     }
   }
 }
+
+// ==================== AUTH STATE ====================
 
 class AuthState {
   final bool isLoading;
@@ -200,21 +249,26 @@ class AuthState {
   });
 
   factory AuthState.initial() => AuthState(isLoading: false);
+  
   factory AuthState.loading() => AuthState(isLoading: true);
+  
   factory AuthState.authenticated(User? user) => AuthState(
     isLoading: false,
     user: user,
     isAuthenticated: true,
   );
+  
   factory AuthState.unauthenticated() => AuthState(
     isLoading: false,
     isAuthenticated: false,
   );
+  
   factory AuthState.otpSent(String userId) => AuthState(
     isLoading: false,
     userId: userId,
     isOtpSent: true,
   );
+  
   factory AuthState.error(String error) => AuthState(
     isLoading: false,
     error: error,

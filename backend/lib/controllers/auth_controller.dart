@@ -87,7 +87,9 @@ class AuthController {
         expiresAt.toIso8601String(),
       ]);
       
-      await emailService.sendOtpCode(data['email'], otpCode, 'verification');
+      // CORRECTION: sendOtpCode n'attend que 2 paramètres (to, code)
+      // Le type est maintenant passé via le paramètre 'type' nommé si disponible
+      await emailService.sendOtpCode(data['email'], otpCode);
       
       return Response.ok(jsonEncode({
         'success': true,
@@ -148,7 +150,8 @@ class AuthController {
         expiresAt.toIso8601String(),
       ]);
       
-      await emailService.sendOtpCode(email, otpCode, 'login');
+      // CORRECTION: sendOtpCode n'attend que 2 paramètres (to, code)
+      await emailService.sendOtpCode(email, otpCode);
       
       return Response.ok(jsonEncode({
         'success': true,

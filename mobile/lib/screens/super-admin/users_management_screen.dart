@@ -331,7 +331,7 @@ class _UsersManagementScreenState extends ConsumerState<UsersManagementScreen> {
                     await _createUser();
                   }
                   setDialogState(() => _isProcessing = false);
-                  if (mounted) {
+                  if (mounted && dialogContext.mounted) {
                     Navigator.pop(dialogContext);
                   }
                 }
@@ -447,7 +447,10 @@ class _UsersManagementScreenState extends ConsumerState<UsersManagementScreen> {
       ),
     );
     
-    if (confirm == true && mounted) {
+    if (confirm == true) {
+      // Vérifier que le contexte est toujours valide
+      if (!mounted) return;
+      
       final result = await _apiService.deleteUserSuperAdmin(user.id);
       if (result['success'] == true && mounted) {
         await _loadUsers();
@@ -465,7 +468,8 @@ class _UsersManagementScreenState extends ConsumerState<UsersManagementScreen> {
   }
 
   Future<void> _resetUserPin(User user) async {
-    final result = await _apiService.resetUserPin(user.id);
+    // Utiliser resetUserPinAdmin au lieu de resetUserPin
+    final result = await _apiService.resetUserPinAdmin(user.id);
     if (result['success'] == true && mounted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

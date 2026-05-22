@@ -40,7 +40,7 @@ class UserNotifier extends StateNotifier<List<User>> {
 
   Future<void> updateUserStatus(String userId, String status) async {
     try {
-      final Map<String, dynamic> result = await _apiService.updateUserStatus(userId, status);
+      final Map<String, dynamic> result = await _apiService.updateUserStatusSuperAdmin(userId, status);
       // Vérifier si le résultat contient l'utilisateur mis à jour
       if (result['success'] == true && result['user'] != null) {
         final updatedUser = User.fromJson(result['user']);

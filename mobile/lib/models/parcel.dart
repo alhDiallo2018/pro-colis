@@ -1,6 +1,8 @@
 // mobile/lib/models/parcel.dart
 import 'package:flutter/material.dart';
 
+import 'payment.dart';
+
 enum ParcelStatus {
   pending('pending', 'En attente', Colors.orange),
   confirmed('confirmed', 'Confirmé', Colors.blue),
@@ -71,12 +73,15 @@ class Parcel {
   final double? price;
   final double? deliveryFees;
   final double? totalAmount;
-  final String? paymentMethod;
+  final PaymentMethod? paymentMethod;
   final String? paymentStatus;
   final List<String> photoUrls;
+  final List<String> videoUrls;
   final String? signatureUrl;
   final bool isInsured;
   final double? insuranceAmount;
+  final bool isUrgent;
+  final double? urgentFee;
   final String? notes;
   final DateTime? pickupDate;
   final DateTime? deliveryDate;
@@ -118,9 +123,12 @@ class Parcel {
     this.paymentMethod,
     this.paymentStatus,
     this.photoUrls = const [],
+    this.videoUrls = const [],
     this.signatureUrl,
     this.isInsured = false,
     this.insuranceAmount,
+    this.isUrgent = false,
+    this.urgentFee,
     this.notes,
     this.pickupDate,
     this.deliveryDate,
@@ -156,6 +164,11 @@ class Parcel {
     String? parseString(dynamic value) => value?.toString();
     double? parseDouble(dynamic value) => value != null ? (value is double ? value : double.tryParse(value.toString())) : null;
     DateTime? parseDateTime(dynamic value) => value != null ? DateTime.tryParse(value.toString()) : null;
+    List<String> parseList(dynamic value) {
+      if (value == null) return [];
+      if (value is List) return value.map((e) => e.toString()).toList();
+      return [];
+    }
 
     return Parcel(
       id: parseString(json['id']) ?? '',
@@ -184,12 +197,15 @@ class Parcel {
       price: parseDouble(json['price']),
       deliveryFees: parseDouble(json['deliveryFees']),
       totalAmount: parseDouble(json['totalAmount']),
-      paymentMethod: parseString(json['paymentMethod']),
+      paymentMethod: json['paymentMethod'] != null ? PaymentMethod.fromString(parseString(json['paymentMethod'])!) : null,
       paymentStatus: parseString(json['paymentStatus']),
-      photoUrls: json['photoUrls'] != null ? List<String>.from(json['photoUrls']) : [],
+      photoUrls: parseList(json['photoUrls']),
+      videoUrls: parseList(json['videoUrls']),
       signatureUrl: parseString(json['signatureUrl']),
       isInsured: json['isInsured'] ?? false,
       insuranceAmount: parseDouble(json['insuranceAmount']),
+      isUrgent: json['isUrgent'] ?? false,
+      urgentFee: parseDouble(json['urgentFee']),
       notes: parseString(json['notes']),
       pickupDate: parseDateTime(json['pickupDate']),
       deliveryDate: parseDateTime(json['deliveryDate']),
@@ -230,12 +246,15 @@ class Parcel {
     'price': price,
     'deliveryFees': deliveryFees,
     'totalAmount': totalAmount,
-    'paymentMethod': paymentMethod,
+    'paymentMethod': paymentMethod?.value,
     'paymentStatus': paymentStatus,
     'photoUrls': photoUrls,
+    'videoUrls': videoUrls,
     'signatureUrl': signatureUrl,
     'isInsured': isInsured,
     'insuranceAmount': insuranceAmount,
+    'isUrgent': isUrgent,
+    'urgentFee': urgentFee,
     'notes': notes,
     'pickupDate': pickupDate?.toIso8601String(),
     'deliveryDate': deliveryDate?.toIso8601String(),
@@ -276,9 +295,44 @@ class Parcel {
   
   String get formattedTotal => '${totalAmount?.toStringAsFixed(0) ?? price?.toStringAsFixed(0) ?? 0} FCFA';
   
+  String get formattedDeliveryFees => '${deliveryFees?.toStringAsFixed(0) ?? 0} FCFA';
+  
   double get volume {
     if (length == null || width == null || height == null) return 0;
-    return length! * width! * height! / 1000000; // en m³
+    return length! * width! * height! / 1000000;
+  }
+  
+  String get formattedVolume => '${volume.toStringAsFixed(2)} m³';
+  
+  String get formattedDate => '${createdAt.day}/${createdAt.month}/${createdAt.year}';
+  
+  String get formattedTime => '${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}';
+  
+  String get formattedDateTime => '$formattedDate à $formattedTime';
+  
+  String get formattedDeliveryDate => deliveryDate != null 
+      ? '${deliveryDate!.day}/${deliveryDate!.month}/${deliveryDate!.year}' 
+      : 'Non livré';
+  
+  String get statusIcon {
+    switch (status) {
+      case ParcelStatus.pending:
+        return '⏳';
+      case ParcelStatus.confirmed:
+        return '✅';
+      case ParcelStatus.pickedUp:
+        return '📦';
+      case ParcelStatus.inTransit:
+        return '🚚';
+      case ParcelStatus.arrived:
+        return '📍';
+      case ParcelStatus.outForDelivery:
+        return '🚛';
+      case ParcelStatus.delivered:
+        return '🎉';
+      case ParcelStatus.cancelled:
+        return '❌';
+    }
   }
 
   Parcel copyWith({
@@ -308,12 +362,15 @@ class Parcel {
     double? price,
     double? deliveryFees,
     double? totalAmount,
-    String? paymentMethod,
+    PaymentMethod? paymentMethod,
     String? paymentStatus,
     List<String>? photoUrls,
+    List<String>? videoUrls,
     String? signatureUrl,
     bool? isInsured,
     double? insuranceAmount,
+    bool? isUrgent,
+    double? urgentFee,
     String? notes,
     DateTime? pickupDate,
     DateTime? deliveryDate,
@@ -355,9 +412,12 @@ class Parcel {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       paymentStatus: paymentStatus ?? this.paymentStatus,
       photoUrls: photoUrls ?? this.photoUrls,
+      videoUrls: videoUrls ?? this.videoUrls,
       signatureUrl: signatureUrl ?? this.signatureUrl,
       isInsured: isInsured ?? this.isInsured,
       insuranceAmount: insuranceAmount ?? this.insuranceAmount,
+      isUrgent: isUrgent ?? this.isUrgent,
+      urgentFee: urgentFee ?? this.urgentFee,
       notes: notes ?? this.notes,
       pickupDate: pickupDate ?? this.pickupDate,
       deliveryDate: deliveryDate ?? this.deliveryDate,

@@ -40,12 +40,13 @@ class Payment {
   final String? parcelId;
   final String? trackingNumber;
   final double amount;
+  final String currency;
   final PaymentMethod method;
   final PaymentStatus status;
   final String? transactionId;
   final String? phoneNumber;
   final String? reference;
-  final String? description;
+  final Map<String, dynamic>? metadata;
   final String? receiptUrl;
   final String? validatedBy;
   final DateTime? validatedAt;
@@ -60,12 +61,13 @@ class Payment {
     this.parcelId,
     this.trackingNumber,
     required this.amount,
+    this.currency = 'XOF',
     required this.method,
     required this.status,
     this.transactionId,
     this.phoneNumber,
     this.reference,
-    this.description,
+    this.metadata,
     this.receiptUrl,
     this.validatedBy,
     this.validatedAt,
@@ -91,6 +93,7 @@ class Payment {
       parcelId: json['parcelId']?.toString(),
       trackingNumber: json['trackingNumber']?.toString(),
       amount: (json['amount'] ?? 0).toDouble(),
+      currency: json['currency'] ?? 'XOF',
       method: json['method'] != null ? PaymentMethod.fromString(json['method'].toString()) : PaymentMethod.cash,
       status: json['status'] != null 
           ? PaymentStatus.values.firstWhere(
@@ -101,7 +104,7 @@ class Payment {
       transactionId: json['transactionId']?.toString(),
       phoneNumber: json['phoneNumber']?.toString(),
       reference: json['reference']?.toString(),
-      description: json['description']?.toString(),
+      metadata: json['metadata'] as Map<String, dynamic>?,
       receiptUrl: json['receiptUrl']?.toString(),
       validatedBy: json['validatedBy']?.toString(),
       validatedAt: parseDateTime(json['validatedAt']),
@@ -118,12 +121,13 @@ class Payment {
     'parcelId': parcelId,
     'trackingNumber': trackingNumber,
     'amount': amount,
+    'currency': currency,
     'method': method.value,
     'status': status.value,
     'transactionId': transactionId,
     'phoneNumber': phoneNumber,
     'reference': reference,
-    'description': description,
+    'metadata': metadata,
     'receiptUrl': receiptUrl,
     'validatedBy': validatedBy,
     'validatedAt': validatedAt?.toIso8601String(),
@@ -146,12 +150,13 @@ class Payment {
     String? parcelId,
     String? trackingNumber,
     double? amount,
+    String? currency,
     PaymentMethod? method,
     PaymentStatus? status,
     String? transactionId,
     String? phoneNumber,
     String? reference,
-    String? description,
+    Map<String, dynamic>? metadata,
     String? receiptUrl,
     String? validatedBy,
     DateTime? validatedAt,
@@ -166,12 +171,13 @@ class Payment {
       parcelId: parcelId ?? this.parcelId,
       trackingNumber: trackingNumber ?? this.trackingNumber,
       amount: amount ?? this.amount,
+      currency: currency ?? this.currency,
       method: method ?? this.method,
       status: status ?? this.status,
       transactionId: transactionId ?? this.transactionId,
       phoneNumber: phoneNumber ?? this.phoneNumber,
       reference: reference ?? this.reference,
-      description: description ?? this.description,
+      metadata: metadata ?? this.metadata,
       receiptUrl: receiptUrl ?? this.receiptUrl,
       validatedBy: validatedBy ?? this.validatedBy,
       validatedAt: validatedAt ?? this.validatedAt,

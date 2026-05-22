@@ -10,7 +10,7 @@ CREATE TABLE users (
     role VARCHAR(50) NOT NULL CHECK (role IN ('super_admin', 'admin', 'driver', 'client')),
     garage_id UUID,
     vehicle_plate VARCHAR(50),
-    profile_photo_url TEXT,
+    profile_photo TEXT,
     status VARCHAR(50) DEFAULT 'active',
     is_email_verified BOOLEAN DEFAULT FALSE,
     is_phone_verified BOOLEAN DEFAULT FALSE,
