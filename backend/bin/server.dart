@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:dotenv/dotenv.dart';
 import 'package:logging/logging.dart';
 import 'package:procolis_backend/middleware/cors_middleware.dart';
 import 'package:procolis_backend/middleware/static_middleware.dart';
@@ -18,31 +17,60 @@ void main() async {
     print('${record.level.name}: ${record.time}: ${record.message}');
   });
 
+  // ================= ENV =================
+  // Utiliser Platform.environment pour Render
+  final portEnv = Platform.environment['PORT'] ?? '8080';
+  final port = int.parse(portEnv);
+  
+  final host = Platform.environment['HOST'] ?? '0.0.0.0';
+  
+  print('🌍 Environnement: ${Platform.environment['RENDER'] == 'true' ? 'Render' : 'Local'}');
+  print('🔌 Port: $port');
+  print('🏠 Host: $host');
+
   // ================= DB =================
   print('🔄 Initialisation de la base de données...');
+  
+  // Récupérer les variables d'environnement pour PostgreSQL
+  final dbHost = Platform.environment['DB_HOST'];
+  final dbName = Platform.environment['DB_NAME'];
+  final dbUser = Platform.environment['DB_USER'];
+  final dbPassword = Platform.environment['DB_PASSWORD'];
+  
+  if (dbHost == null || dbName == null || dbUser == null) {
+    print('⚠️ Variables DB manquantes, utilisation de la config locale');
+  } else {
+    print('📊 Base distante: $dbHost/$dbName');
+  }
+  
   final db = await DatabaseService.getInstance();
 
   if (!db.isConnected) {
     print('❌ Base de données non connectée!');
-    return;
+    // Ne pas quitter, le serveur peut démarrer même sans DB
+    print('⚠️ Le serveur démarre sans base de données');
+  } else {
+    print('✅ Base de données initialisée');
   }
 
-  print('✅ Base de données initialisée');
-
-  // ================= ENV =================
-  var env = DotEnv(includePlatformEnvironment: true)..load();
-
   // ================= EMAIL =================
+  final smtpHost = Platform.environment['SMTP_HOST'] ?? 'smtp.gmail.com';
+  final smtpPort = int.parse(Platform.environment['SMTP_PORT'] ?? '587');
+  final smtpSecure = Platform.environment['SMTP_SECURE'] == 'true';
+  final smtpUser = Platform.environment['SMTP_USER'] ?? '';
+  final smtpPass = Platform.environment['SMTP_PASS'] ?? '';
+  final smtpFrom = Platform.environment['SMTP_FROM'] ?? 'PRO COLIS <noreply@proscolis.sn>';
+  
   final emailService = EmailService(
-    smtpHost: env['SMTP_HOST'] ?? 'smtp.gmail.com',
-    smtpPort: int.parse(env['SMTP_PORT'] ?? '587'),
-    smtpSecure: env['SMTP_SECURE'] == 'true',
-    smtpUser: env['SMTP_USER'] ?? '',
-    smtpPass: env['SMTP_PASS'] ?? '',
-    smtpFrom: env['SMTP_FROM'] ?? 'PRO COLIS <noreply@proscolis.sn>',
+    smtpHost: smtpHost,
+    smtpPort: smtpPort,
+    smtpSecure: smtpSecure,
+    smtpUser: smtpUser,
+    smtpPass: smtpPass,
+    smtpFrom: smtpFrom,
   );
 
-  print('📧 Email configuré');
+  print('📧 Email configuré: $smtpHost');
 
   // ================= ROUTER =================
   final router = AppRoutes.createRouter(emailService: emailService);
@@ -55,13 +83,27 @@ void main() async {
     print('📁 Dossier uploads créé');
   }
 
-  print("📁 STATIC PATH: ${uploadsDir.path}");
+  // Créer les sous-dossiers
+  final parcelsDir = Directory('uploads/parcels');
+  if (!await parcelsDir.exists()) {
+    await parcelsDir.create(recursive: true);
+  }
+  
+  final profileDir = Directory('uploads/profile');
+  if (!await profileDir.exists()) {
+    await profileDir.create(recursive: true);
+  }
+
+  print("📁 STATIC PATH: ${uploadsDir.absolute.path}");
   print("📁 EXISTS: ${await uploadsDir.exists()}");
+  print("📁 PARCELS: ${await parcelsDir.exists()}");
+  print("📁 PROFILE: ${await profileDir.exists()}");
 
   // ================= STATIC HANDLER =================
   final staticHandler = createStaticHandler(
     'uploads',
     listDirectories: false,
+    defaultDocument: 'index.html',
   );
 
   // ================= PIPELINE =================
@@ -71,17 +113,20 @@ void main() async {
     .addMiddleware(staticFilesMiddleware())
     .addHandler(router);
 
-      print("CWD = ${Directory.current.path}");
-print("ABS uploads = ${Directory('uploads').absolute.path}");
-print("EXISTS = ${Directory('uploads').existsSync()}");
-print("FILES = ${Directory('uploads/profile').listSync()}");
+  print("CWD = ${Directory.current.path}");
+  print("ABS uploads = ${Directory('uploads').absolute.path}");
+  print("EXISTS = ${Directory('uploads').existsSync()}");
 
   // ================= SERVER =================
-  final port = int.parse(env['PORT'] ?? '8080');
-  final server = await serve(handler, '0.0.0.0', port);
+  final server = await serve(handler, host, port);
 
   print('');
   print('🚀 PRO COLIS BACKEND v2.0');
-  print('👉 http://localhost:${server.port}');
-  print('📁 STATIC: http://localhost:${server.port}/uploads/');
+  print('👉 http://$host:${server.port}');
+  if (host != '0.0.0.0') {
+    print('👉 http://localhost:${server.port}');
+  }
+  print('📁 STATIC: http://$host:${server.port}/uploads/');
+  print('');
+  print('✅ Serveur prêt !');
 }
