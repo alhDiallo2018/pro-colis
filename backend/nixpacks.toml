@@ -1,0 +1,12 @@
+# backend/nixpacks.toml
+[phases.setup]
+nixPkgs = ["dart"]
+
+[phases.install]
+cmds = ["dart pub get"]
+
+[phases.start]
+cmd = "dart run bin/server.dart"
+
+[start]
+cmd = "dart run bin/server.dart"

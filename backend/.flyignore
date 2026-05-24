@@ -1,0 +1,8 @@
+# .flyignore
+Dockerfile
+.git
+.gitignore
+*.md
+test/
+*.log
+.DS_Store
