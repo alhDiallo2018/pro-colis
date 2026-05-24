@@ -17,39 +17,54 @@ class DatabaseService {
   }
 
   Future<void> _init() async {
-    var env = DotEnv(includePlatformEnvironment: true)..load();
+  final env = DotEnv(includePlatformEnvironment: true)..load();
 
-    final host = env['DB_HOST'] ?? 'localhost';
-    final port = int.parse(env['DB_PORT'] ?? '5432');
-    final database = env['DB_NAME'] ?? 'procolis';
-    final username = env['DB_USER'] ?? 'testad';
-    final password = env['DB_PASSWORD'] ?? 'postgres';
+  // 🔥 VALEURS RENDER (fallback sécurisé)
+  final host = env['DB_HOST'] ??
+      'dpg-d89i57mk1jcs73f2u8m0-a.oregon-postgres.render.com';
 
-    final endpoint = Endpoint(
-      host: host,
-      port: port,
-      database: database,
-      username: username,
-      password: password,
+  final port = int.parse(env['DB_PORT'] ?? '5432');
+
+  final database = env['DB_NAME'] ?? 'procolis_db';
+
+  final username = env['DB_USER'] ?? 'procolis_db_user';
+
+  final password = env['DB_PASSWORD'] ?? '';
+
+  // ❌ sécurité : empêche crash silencieux
+  if (password.isEmpty) {
+    throw Exception(
+      "❌ DB_PASSWORD manquant (Render Environment Variables non configurées)"
     );
-
-    final settings = ConnectionSettings(
-      sslMode: SslMode.disable,
-    );
-
-    try {
-      _connection = await Connection.open(endpoint, settings: settings);
-      _isConnected = true;
-      
-      print('✅ Connecté à PostgreSQL sur $host:$port/$database');
-      
-      await _createTables();
-      await _seedInitialData();
-    } catch (e) {
-      print('❌ Erreur de connexion à PostgreSQL: $e');
-      rethrow;
-    }
   }
+
+  final endpoint = Endpoint(
+    host: host,
+    port: port,
+    database: database,
+    username: username,
+    password: password,
+  );
+
+  final settings = ConnectionSettings(
+    sslMode: SslMode.require, // 🔥 obligatoire Render
+  );
+
+  try {
+    _connection = await Connection.open(endpoint, settings: settings);
+    _isConnected = true;
+
+    print('✅ PostgreSQL connecté sur Render');
+    print('🌍 Host: $host');
+    print('🗄️ DB: $database');
+
+    await _createTables();
+    await _seedInitialData();
+  } catch (e) {
+    print('❌ Erreur PostgreSQL: $e');
+    rethrow;
+  }
+}
 
   Future<void> _createTables() async {
     try {
