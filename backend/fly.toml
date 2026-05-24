@@ -3,7 +3,9 @@ app = "pro-colis"
 primary_region = "cdg"
 
 [build]
-  command = "dart pub get"
+  # Utiliser le buildpack Dart
+  builder = "heroku/buildpacks:20"
+  buildpacks = ["https://github.com/heroku/heroku-buildpack-dart.git"]
 
 [env]
   PORT = "8080"
