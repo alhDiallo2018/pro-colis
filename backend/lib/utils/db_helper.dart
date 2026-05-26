@@ -39,7 +39,7 @@ class DbHelper {
     );
 
     final settings = ConnectionSettings(
-      sslMode: SslMode.disable,
+      sslMode: SslMode.require,
     );
 
     try {
