@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:postgres/postgres.dart';
 
 class DatabaseService {
@@ -11,8 +10,11 @@ class DatabaseService {
 
   static Future<DatabaseService> getInstance() async {
     if (_instance == null) {
+      print('🆕 Création instance DatabaseService');
       _instance = DatabaseService._internal();
       await _instance!._init();
+    } else {
+      print('♻️ Réutilisation instance DatabaseService existante');
     }
     return _instance!;
   }
@@ -45,11 +47,11 @@ class DatabaseService {
     );
 
     final settings = ConnectionSettings(
-      sslMode: SslMode.require, // Render nécessite SSL
+      sslMode: SslMode.require,
     );
 
     try {
-      print('🔄 Connexion à PostgreSQL...dans database service');
+      print('🔄 Connexion à PostgreSQL...');
       _connection = await Connection.open(endpoint, settings: settings);
       _isConnected = true;
       print('✅ Connecté à PostgreSQL');
@@ -227,7 +229,7 @@ class DatabaseService {
 
   Connection get connection {
     if (!_isConnected) {
-      throw StateError('Database not connected');
+      throw StateError('Database connection is not initialized. Call getInstance() first and await it.');
     }
     return _connection;
   }
@@ -238,6 +240,7 @@ class DatabaseService {
     if (_isConnected) {
       await _connection.close();
       _isConnected = false;
+      print('🔌 Connexion PostgreSQL fermée');
     }
   }
 }
