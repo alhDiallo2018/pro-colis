@@ -1,7 +1,8 @@
 // lib/services/auth_service.dart
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:uuid/uuid.dart';
 
-import '../utils/db_helper.dart';
+// import '../utils/db_helper.dart';
 import '../utils/jwt_helper.dart';
 import 'email_service.dart';
 
@@ -15,7 +16,7 @@ class AuthService {
   AuthService({required EmailService emailService}) : _emailService = emailService;
   
   Future<Map<String, dynamic>> register(Map<String, dynamic> data) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     final userId = _uuid.v4();
     
     try {
@@ -52,7 +53,7 @@ class AuthService {
   }
   
   Future<Map<String, dynamic>> sendOtp(String identifier) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     final otp = (100000 + _uuid.v4().hashCode % 900000).toString();
     final expiresAt = DateTime.now().add(Duration(minutes: 5));
     
@@ -112,7 +113,7 @@ class AuthService {
     _otpStorage.remove(userId);
     
     // Récupérer les infos utilisateur
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     final userResult = await db.connection.execute(
       'SELECT id, email, phone, full_name, role FROM users WHERE id = \$1',
       parameters: [userId],
@@ -134,7 +135,7 @@ class AuthService {
   }
   
   Future<Map<String, dynamic>> loginWithPin(String pin) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final result = await db.connection.execute(
