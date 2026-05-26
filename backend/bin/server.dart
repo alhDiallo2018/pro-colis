@@ -36,6 +36,13 @@ void main() async {
   final dbName = Platform.environment['DB_NAME'];
   final dbUser = Platform.environment['DB_USER'];
   final dbPassword = Platform.environment['DB_PASSWORD'];
+
+  print('=== TEST CONNEXION DB ===');
+  print('DB_HOST = ${Platform.environment['DB_HOST']}');
+  print('DB_NAME = ${Platform.environment['DB_NAME']}');
+  print('DB_USER = ${Platform.environment['DB_USER']}');
+  print('DB_PORT = ${Platform.environment['DB_PORT']}');
+  print('==========================');
   
   if (dbHost == null || dbName == null || dbUser == null) {
     print('⚠️ Variables DB manquantes, utilisation de la config locale');
