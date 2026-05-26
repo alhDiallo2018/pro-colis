@@ -1,7 +1,7 @@
 // lib/routes/auth_routes.dart
 import 'dart:convert';
 
-import 'package:procolis_backend/utils/db_helper.dart';
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../services/email_service.dart';
 import '../services/user_service.dart';
 import '../utils/jwt_helper.dart';
+
 
 class AuthRoutes {
   final AuthService _authService;
@@ -82,7 +83,7 @@ class AuthRoutes {
       }
 
       try {
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         // Version sans vehicle_color et vehicle_year (colonnes qui n'existent pas)
         final result = await db.connection.execute('''
   SELECT 

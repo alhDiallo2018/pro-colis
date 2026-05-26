@@ -1,13 +1,14 @@
 // lib/routes/driver_routes.dart
 import 'dart:convert';
 
-import 'package:procolis_backend/utils/db_helper.dart';
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import '../services/driver_service.dart';
 import '../services/parcel_service.dart';
 import '../utils/jwt_helper.dart';
+
 
 class DriverRoutes {
   final ParcelService _parcelService = ParcelService();
@@ -48,7 +49,7 @@ class DriverRoutes {
       final userId = JwtHelper.extractUserId(request)!;
 
       try {
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         final result = await db.connection.execute('''
           SELECT id, email, phone, full_name, role, status, address, city, region, 
                  vehicle_plate, vehicle_model, vehicle_color, vehicle_year,
@@ -107,7 +108,7 @@ class DriverRoutes {
         print('📝 Mise à jour profil chauffeur: $userId');
         print('📝 Données reçues: $data');
 
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
 
         // Construction dynamique de la requête UPDATE
         final updates = <String>[];
@@ -248,7 +249,7 @@ class DriverRoutes {
                   {'success': false, 'message': 'URL de photo invalide'}));
         }
 
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         await db.connection.execute('''
           UPDATE users 
           SET profile_photo = \$2, updated_at = NOW()
@@ -418,7 +419,7 @@ class DriverRoutes {
         final newStatus = data['status'];
         final location = data['location'];
 
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
 
         // Vérifier le colis (log seulement)
         final parcelCheck = await db.connection.execute('''

@@ -1,13 +1,14 @@
 // lib/routes/garage_admin_routes.dart
 import 'dart:convert';
 
-import 'package:procolis_backend/utils/db_helper.dart';
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import '../services/garage_service.dart';
 import '../services/parcel_service.dart';
 import '../utils/jwt_helper.dart';
+
 
 class GarageAdminRoutes {
   final ParcelService _parcelService = ParcelService();
@@ -46,7 +47,7 @@ class GarageAdminRoutes {
         print('📝 Mise à jour profil admin: $userId');
         print('📝 Données reçues: $data');
         
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         
         // Construction dynamique de la requête UPDATE
         final updates = <String>[];
@@ -167,7 +168,7 @@ class GarageAdminRoutes {
       }));
     }
     
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     final result = await db.connection.execute('''
       UPDATE users 
       SET profile_photo = \$2, updated_at = NOW()
@@ -205,7 +206,7 @@ class GarageAdminRoutes {
       final userId = JwtHelper.extractUserId(request)!;
       
       try {
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         final result = await db.connection.execute('''
           SELECT id, email, phone, full_name, role, status, address, city, region, 
                  vehicle_plate, vehicle_model, driver_status, garage_id, profile_photo,
@@ -266,7 +267,7 @@ class GarageAdminRoutes {
           }));
         }
         
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         await db.connection.execute('''
           UPDATE users 
           SET profile_photo = \$2, updated_at = NOW()
@@ -352,7 +353,7 @@ class GarageAdminRoutes {
         }
         
         // Récupérer les informations du colis
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         final parcelResult = await db.connection.execute('''
           SELECT departure_garage_id, arrival_garage_id, status 
           FROM parcels WHERE id = \$1
@@ -435,7 +436,7 @@ class GarageAdminRoutes {
         }
         
         // Récupérer les informations du colis
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         final parcelResult = await db.connection.execute('''
           SELECT departure_garage_id, arrival_garage_id, status 
           FROM parcels WHERE id = \$1
@@ -522,7 +523,7 @@ class GarageAdminRoutes {
         }
         
         // Récupérer les informations du colis
-        final db = await DbHelper.getInstance();
+        final db = await DatabaseService.getInstance();
         final parcelResult = await db.connection.execute('''
           SELECT departure_garage_id, arrival_garage_id, status 
           FROM parcels WHERE id = \$1

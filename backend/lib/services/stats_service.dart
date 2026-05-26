@@ -1,9 +1,10 @@
 // lib/services/stats_service.dart
-import '../utils/db_helper.dart';
+import 'package:procolis_backend/services/database_service.dart';
+
 
 class StatsService {
   Future<Map<String, dynamic>> getGlobalStats() async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final userCount = await db.connection.execute('SELECT COUNT(*) FROM users');
@@ -35,7 +36,7 @@ class StatsService {
   }
   
   Future<Map<String, dynamic>> getAdvancedStats() async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       // Colis par statut
@@ -116,7 +117,7 @@ class StatsService {
   }
   
   Future<Map<String, dynamic>> getDashboardStats() async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       // Colis du jour

@@ -1,7 +1,7 @@
 // lib/utils/jwt_helper.dart
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:shelf/shelf.dart';
 
-import '../utils/db_helper.dart';
 
 class JwtHelper {
   // Génère un token simple (format: token_{userId}_{timestamp})
@@ -34,7 +34,7 @@ class JwtHelper {
   static Future<bool> isSuperAdmin(String userId) async {
     if (userId.isEmpty) return false;
     
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     try {
       final result = await db.connection.execute(
         'SELECT role FROM users WHERE id = \$1',
@@ -50,7 +50,7 @@ class JwtHelper {
   static Future<bool> isAdmin(String userId) async {
     if (userId.isEmpty) return false;
     
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     try {
       final result = await db.connection.execute(
         'SELECT role FROM users WHERE id = \$1',
@@ -66,7 +66,7 @@ class JwtHelper {
   static Future<bool> isDriver(String userId) async {
     if (userId.isEmpty) return false;
     
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     try {
       final result = await db.connection.execute(
         'SELECT role FROM users WHERE id = \$1',
@@ -82,7 +82,7 @@ class JwtHelper {
   static Future<bool> isClient(String userId) async {
     if (userId.isEmpty) return false;
     
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     try {
       final result = await db.connection.execute(
         'SELECT role FROM users WHERE id = \$1',
@@ -98,7 +98,7 @@ class JwtHelper {
   static Future<String?> getUserRole(String userId) async {
     if (userId.isEmpty) return null;
     
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     try {
       final result = await db.connection.execute(
         'SELECT role FROM users WHERE id = \$1',
@@ -120,7 +120,7 @@ class JwtHelper {
     if (userId == null) return false;
     
     // Vérifier si l'utilisateur existe et est actif
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     try {
       final result = await db.connection.execute(
         'SELECT status FROM users WHERE id = \$1',

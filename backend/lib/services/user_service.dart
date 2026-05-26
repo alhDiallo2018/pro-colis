@@ -1,11 +1,11 @@
 // lib/services/user_service.dart
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:uuid/uuid.dart';
 
-import '../utils/db_helper.dart';
 
 class UserService {
   Future<Map<String, dynamic>?> getUserById(String userId) async {
-  final db = await DbHelper.getInstance();
+  final db = await DatabaseService.getInstance();
   
   try {
     final result = await db.connection.execute('''
@@ -46,7 +46,7 @@ class UserService {
 }
   
   Future<List<Map<String, dynamic>>> getAllUsers() async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final result = await db.connection.execute('''
@@ -65,7 +65,7 @@ class UserService {
   }
   
   Future<void> updateProfile(String userId, Map<String, dynamic> data) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     await db.connection.execute('''
       UPDATE users SET full_name = \$2, email = \$3, phone = \$4, 
@@ -78,7 +78,7 @@ class UserService {
   }
   
   Future<void> updatePin(String userId, String currentPin, String newPin) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     // Vérifier l'ancien PIN
     final checkResult = await db.connection.execute(
@@ -97,7 +97,7 @@ class UserService {
   }
   
   Future<String> createUser(Map<String, dynamic> data) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     final userId = const Uuid().v4();
     
     await db.connection.execute('''
@@ -115,7 +115,7 @@ class UserService {
   }
   
   Future<void> updateUser(String userId, Map<String, dynamic> data) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     await db.connection.execute('''
       UPDATE users SET full_name = \$2, email = \$3, phone = \$4, role = \$5, status = \$6,
@@ -130,7 +130,7 @@ class UserService {
   }
   
   Future<void> updateUserRole(String userId, String role) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     await db.connection.execute(
       'UPDATE users SET role = \$2, updated_at = NOW() WHERE id = \$1',
@@ -139,7 +139,7 @@ class UserService {
   }
   
   Future<void> updateUserStatus(String userId, String status) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     await db.connection.execute(
       'UPDATE users SET status = \$2, updated_at = NOW() WHERE id = \$1',
@@ -148,7 +148,7 @@ class UserService {
   }
   
   Future<void> deleteUser(String userId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     await db.connection.execute('DELETE FROM users WHERE id = \$1', parameters: [userId]);
   }

@@ -1,12 +1,13 @@
 // lib/services/driver_service.dart
-import '../utils/db_helper.dart';
+import 'package:procolis_backend/services/database_service.dart';
+
 
 class DriverService {
   Future<List<Map<String, dynamic>>> searchDrivers({
     String? query,
     int limit = 20,
   }) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       String sql = '''
@@ -36,7 +37,7 @@ class DriverService {
   }
   
   Future<Map<String, dynamic>?> getDriverById(String driverId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final result = await db.connection.execute('''
@@ -57,7 +58,7 @@ class DriverService {
   }
   
   Future<List<Map<String, dynamic>>> getDriversByGarage(String garageId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final result = await db.connection.execute('''
@@ -75,7 +76,7 @@ class DriverService {
   }
   
   Future<void> updateDriverStatus(String driverId, String status) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     await db.connection.execute(
       'UPDATE users SET driver_status = \$2, updated_at = NOW() WHERE id = \$1',

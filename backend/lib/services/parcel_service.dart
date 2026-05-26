@@ -1,8 +1,7 @@
 import 'dart:convert';
 
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:uuid/uuid.dart';
-
-import '../utils/db_helper.dart';
 
 class ParcelService {
   final _uuid = const Uuid();
@@ -44,7 +43,7 @@ class ParcelService {
 
   // Créer un colis avec tous les champs
   Future<Map<String, dynamic>> createParcel(String userId, Map<String, dynamic> data) async {
-  final db = await DbHelper.getInstance();
+  final db = await DatabaseService.getInstance();
   final parcelId = _uuid.v4();
   final trackingNumber = _generateTrackingNumber();
 
@@ -224,7 +223,7 @@ class ParcelService {
   // Récupérer les colis d'un utilisateur
   Future<List<Map<String, dynamic>>> getUserParcels(String userId,
       {String? status}) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       var query = '''
@@ -283,7 +282,7 @@ class ParcelService {
 
   // Récupérer un colis par ID (complet)
   Future<Map<String, dynamic>?> getParcelById(String parcelId) async {
-  final db = await DbHelper.getInstance();
+  final db = await DatabaseService.getInstance();
 
   try {
     final result = await db.connection.execute(
@@ -409,7 +408,7 @@ class ParcelService {
   // Récupérer un colis par numéro de suivi
   Future<Map<String, dynamic>?> getParcelByTrackingNumber(
       String trackingNumber) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       final result = await db.connection.execute(
@@ -435,7 +434,7 @@ class ParcelService {
 
   // Récupérer les colis d'un chauffeur
   Future<List<Map<String, dynamic>>> getDriverParcels(String driverId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       final result = await db.connection.execute(
@@ -480,7 +479,7 @@ class ParcelService {
 
   // Récupérer les colis d'un garage
   Future<List<Map<String, dynamic>>> getGarageParcels(String garageId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       final result = await db.connection.execute(
@@ -519,7 +518,7 @@ class ParcelService {
 
   // Récupérer tous les colis (admin)
   Future<List<Map<String, dynamic>>> getAllParcels() async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       final result = await db.connection.execute(
@@ -549,7 +548,7 @@ class ParcelService {
 
   // Récupérer les événements d'un colis
   Future<List<Map<String, dynamic>>> getParcelEvents(String parcelId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       final result = await db.connection.execute(
@@ -601,7 +600,7 @@ class ParcelService {
     String? photoUrl,
     Map<String, dynamic>? metadata,
   }) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     final eventId = _uuid.v4();
 
     await db.connection.execute(
@@ -646,7 +645,7 @@ class ParcelService {
     String? photoUrl,
     String? description,
   }) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       await db.connection.execute(
@@ -691,7 +690,7 @@ class ParcelService {
   // Confirmer la livraison
   Future<Map<String, dynamic>?> confirmDelivery(
       String parcelId, String driverId, Map<String, dynamic> data) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       await db.connection.execute(
@@ -723,7 +722,7 @@ class ParcelService {
 
   // Assigner un chauffeur à un colis
   Future<void> assignDriverToParcel(String parcelId, String driverId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     final driverResult = await db.connection.execute(
       'SELECT full_name, phone FROM users WHERE id = \$1',
@@ -765,7 +764,7 @@ class ParcelService {
   // Annuler un colis avec raison
   Future<void> cancelParcelWithReason(
       String parcelId, String userId, String? reason) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     await db.connection.execute(
       '''
@@ -800,7 +799,7 @@ class ParcelService {
 
   // Mettre à jour un colis
   Future<void> updateParcel(String parcelId, Map<String, dynamic> data) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     await db.connection.execute(
       '''
@@ -816,7 +815,7 @@ class ParcelService {
 
   // Supprimer un colis
   Future<bool> deleteParcel(String parcelId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
 
     try {
       await db.connection.execute(

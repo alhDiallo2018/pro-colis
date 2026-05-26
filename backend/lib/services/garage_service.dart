@@ -1,13 +1,13 @@
 // lib/services/garage_service.dart
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:uuid/uuid.dart';
 
-import '../utils/db_helper.dart';
 
 class GarageService {
   final _uuid = Uuid();
   
   Future<String?> getGarageIdByAdmin(String adminId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final result = await db.connection.execute(
@@ -23,7 +23,7 @@ class GarageService {
   }
   
   Future<List<Map<String, dynamic>>> getAllGarages() async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final result = await db.connection.execute('''
@@ -43,7 +43,7 @@ class GarageService {
   }
   
   Future<Map<String, dynamic>?> getGarageById(String garageId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final result = await db.connection.execute(
@@ -67,7 +67,7 @@ class GarageService {
   }
   
   Future<String> createGarage(Map<String, dynamic> data) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     final garageId = _uuid.v4();
     
     await db.connection.execute('''
@@ -82,7 +82,7 @@ class GarageService {
   }
   
   Future<void> updateGarage(String garageId, Map<String, dynamic> data) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     await db.connection.execute('''
       UPDATE garages SET name = \$2, city = \$3, region = \$4, address = \$5, phone = \$6,
@@ -95,13 +95,13 @@ class GarageService {
   }
   
   Future<void> deleteGarage(String garageId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     await db.connection.execute('DELETE FROM garages WHERE id = \$1', parameters: [garageId]);
   }
   
   Future<List<Map<String, dynamic>>> getGarageDrivers(String garageId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       final result = await db.connection.execute('''
@@ -119,7 +119,7 @@ class GarageService {
   }
   
   Future<Map<String, dynamic>> getGarageStats(String garageId) async {
-    final db = await DbHelper.getInstance();
+    final db = await DatabaseService.getInstance();
     
     try {
       // CORRECTION: Supprimer le mot-clé 'const' et utiliser 'final'

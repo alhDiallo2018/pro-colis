@@ -1,12 +1,13 @@
 // lib/routes/public_routes.dart
 import 'dart:convert';
 
+import 'package:procolis_backend/services/database_service.dart';
 import 'package:procolis_backend/services/parcel_service.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import '../services/driver_service.dart';
-import '../utils/db_helper.dart';
+
 
 class PublicRoutes {
   final DriverService _driverService = DriverService();
@@ -27,7 +28,7 @@ class PublicRoutes {
     
     // Liste des garages (publique)
     router.get('/garages', (Request request) async {
-      final db = await DbHelper.getInstance();
+      final db = await DatabaseService.getInstance();
       try {
         final result = await db.connection.execute(
           'SELECT id, name, city, region, address, phone FROM garages ORDER BY name'
