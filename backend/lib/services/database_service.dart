@@ -1,82 +1,240 @@
-import 'dart:io';
+import 'package:postgres/postgres.dart';
+import 'package:procolis_backend/config/database_config.dart';
 
-import 'package:dotenv/dotenv.dart';
+class DatabaseService {
+  static DatabaseService? _instance;
+  late Connection _connection;
+  bool _isConnected = false;
 
-class DatabaseConfig {
-  static DatabaseConfig? _instance;
+  DatabaseService._internal();
 
-  late final String host;
-  late final int port;
-  late final String database;
-  late final String username;
-  late final String password;
-  late final bool useSsl;
-
-  DatabaseConfig._internal();
-
-  static Future<DatabaseConfig> getInstance() async {
+  static Future<DatabaseService> getInstance() async {
     if (_instance == null) {
-      _instance = DatabaseConfig._internal();
-      await _instance!._loadConfig();
+      print('🆕 Création instance DatabaseService');
+      _instance = DatabaseService._internal();
+      await _instance!._init();
+    } else {
+      print('♻️ Réutilisation instance DatabaseService existante');
     }
-
     return _instance!;
   }
 
-  Future<void> _loadConfig() async {
-    // PRIORITÉ ABSOLUE: Variables d'environnement du système (Render)
-    // AVANT de charger .env
-    
-    String? envHost = Platform.environment['DB_HOST'];
-    String? envPort = Platform.environment['DB_PORT'];
-    String? envName = Platform.environment['DB_NAME'];
-    String? envUser = Platform.environment['DB_USER'];
-    String? envPassword = Platform.environment['DB_PASSWORD'];
-    
-    // Si on est sur Render (DB_HOST existe)
-    if (envHost != null && envHost.isNotEmpty) {
-      print('🌍 Mode Render détecté - Utilisation variables env système');
-      
-      host = envHost;
-      port = int.parse(envPort ?? '5432');
-      database = envName ?? 'procolis_db';
-      username = envUser ?? 'procolis_user';
-      password = envPassword ?? '';
-      useSsl = true; // Render nécessite SSL
-      
-      print('📋 Database Config Loaded (Render)');
-      print('Host: $host');
-      print('Port: $port');
-      print('Database: $database');
-      print('User: $username');
-      print('SSL: $useSsl');
-      return;
-    }
-    
-    // Fallback: Mode local avec fichier .env
-    print('🏠 Mode Local - Chargement depuis .env');
-    
-    final env = DotEnv(includePlatformEnvironment: false);
-    
+  Future<void> _init() async {
+  try {
+    final config = await DatabaseConfig.getInstance();
+
+    final endpoint = Endpoint(
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      username: config.username,
+      password: config.password,
+    );
+
+    final settings = ConnectionSettings(
+      sslMode:
+          config.useSsl
+              ? SslMode.require
+              : SslMode.disable,
+    );
+
+    print('🔄 Connexion PostgreSQL...');
+
+    _connection = await Connection.open(
+      endpoint,
+      settings: settings,
+    );
+
+    _isConnected = true;
+
+    print('✅ PostgreSQL connecté');
+
+    await _createTables();
+    await _seedInitialData();
+
+  } catch (e) {
+    print('❌ Erreur DB: $e');
+    _isConnected = false;
+  }
+}
+
+  Future<void> _createTables() async {
     try {
-      env.load();
-      print('✅ Fichier .env chargé');
+      await _connection.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+          id UUID PRIMARY KEY,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          phone VARCHAR(50) UNIQUE NOT NULL,
+          full_name VARCHAR(255) NOT NULL,
+          password_hash VARCHAR(255),
+          role VARCHAR(50) DEFAULT 'client',
+          status VARCHAR(50) DEFAULT 'active',
+          address TEXT,
+          city VARCHAR(100),
+          region VARCHAR(100),
+          vehicle_plate VARCHAR(50),
+          vehicle_model VARCHAR(100),
+          driver_status VARCHAR(50),
+          pin VARCHAR(10),
+          gender VARCHAR(20),
+          garage_id UUID,
+          profile_photo TEXT,
+          is_email_verified BOOLEAN DEFAULT FALSE,
+          is_phone_verified BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_login TIMESTAMP
+        )
+      ''');
+      
+      await _connection.execute('''
+        CREATE TABLE IF NOT EXISTS garages (
+          id UUID PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          city VARCHAR(100) NOT NULL,
+          region VARCHAR(100) NOT NULL,
+          address TEXT,
+          phone VARCHAR(50),
+          latitude DECIMAL(10, 8),
+          longitude DECIMAL(11, 8),
+          drivers_count INT DEFAULT 0,
+          parcels_count INT DEFAULT 0,
+          revenue DECIMAL(10, 2) DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      
+      await _connection.execute('''
+        CREATE TABLE IF NOT EXISTS parcels (
+          id UUID PRIMARY KEY,
+          tracking_number VARCHAR(50) UNIQUE NOT NULL,
+          sender_id UUID,
+          sender_name VARCHAR(255) NOT NULL,
+          sender_phone VARCHAR(50) NOT NULL,
+          receiver_name VARCHAR(255) NOT NULL,
+          receiver_phone VARCHAR(50) NOT NULL,
+          receiver_email VARCHAR(255),
+          description TEXT,
+          weight DECIMAL(10, 2),
+          type VARCHAR(50) DEFAULT 'package',
+          status VARCHAR(50) DEFAULT 'pending',
+          departure_garage_id UUID,
+          departure_garage_name VARCHAR(255),
+          arrival_garage_id UUID,
+          arrival_garage_name VARCHAR(255),
+          driver_id UUID,
+          driver_name VARCHAR(255),
+          driver_phone VARCHAR(50),
+          price DECIMAL(10, 2),
+          payment_method VARCHAR(50),
+          payment_status VARCHAR(50) DEFAULT 'pending',
+          photo_urls TEXT[],
+          signature_url TEXT,
+          pickup_date TIMESTAMP,
+          delivery_date TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      
+      await _connection.execute('''
+        CREATE TABLE IF NOT EXISTS parcel_events (
+          id UUID PRIMARY KEY,
+          parcel_id UUID,
+          status VARCHAR(50) NOT NULL,
+          description TEXT,
+          location VARCHAR(255),
+          user_id UUID,
+          user_name VARCHAR(255),
+          metadata JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      
+      await _connection.execute('''
+        CREATE TABLE IF NOT EXISTS otps (
+          id UUID PRIMARY KEY,
+          user_id UUID,
+          code VARCHAR(10) NOT NULL,
+          type VARCHAR(50) DEFAULT 'verification',
+          expires_at TIMESTAMP NOT NULL,
+          attempts INT DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      
+      await _connection.execute('''
+        CREATE TABLE IF NOT EXISTS tokens (
+          id UUID PRIMARY KEY,
+          user_id UUID,
+          token TEXT UNIQUE NOT NULL,
+          refresh_token TEXT,
+          expires_at TIMESTAMP NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      
+      print('✅ Tables créées/vérifiées');
     } catch (e) {
-      print('⚠️ Aucun fichier .env trouvé, utilisation valeurs par défaut');
+      print('❌ Erreur création tables: $e');
     }
+  }
 
-    host = env['DB_HOST'] ?? 'localhost';
-    port = int.parse(env['DB_PORT'] ?? '5432');
-    database = env['DB_NAME'] ?? 'procolis_db';
-    username = env['DB_USER'] ?? 'postgres';
-    password = env['DB_PASSWORD'] ?? '';
-    useSsl = host != 'localhost' && host != '127.0.0.1';
+  Future<void> _seedInitialData() async {
+    try {
+      final result = await _connection.execute('SELECT COUNT(*) FROM garages');
+      final count = result.first[0] as int? ?? 0;
+      
+      if (count == 0) {
+        print('🌱 Insertion des données initiales...');
+        
+        await _connection.execute('''
+          INSERT INTO garages (id, name, city, region, address, phone)
+          VALUES 
+            (gen_random_uuid(), 'Garage Dakar Centre', 'Dakar', 'Dakar', '123 Avenue Cheikh Anta Diop', '+221 33 123 45 67'),
+            (gen_random_uuid(), 'Garage Thiès', 'Thiès', 'Thiès', 'Route Nationale 1', '+221 33 987 65 43'),
+            (gen_random_uuid(), 'Garage Saint-Louis', 'Saint-Louis', 'Saint-Louis', 'Boulevard de la Libération', '+221 33 456 78 90'),
+            (gen_random_uuid(), 'Garage Ziguinchor', 'Ziguinchor', 'Ziguinchor', 'Avenue Léopold Sédar Senghor', '+221 33 654 32 10'),
+            (gen_random_uuid(), 'Garage Kaolack', 'Kaolack', 'Kaolack', 'Boulevard du Général de Gaulle', '+221 33 789 01 23')
+        ''');
+        
+        await _connection.execute('''
+          INSERT INTO users (id, email, phone, full_name, role, status, pin, is_email_verified, is_phone_verified)
+          VALUES (
+            gen_random_uuid(), 
+            'admin@procolis.com', 
+            '+221 77 123 45 67', 
+            'Administrateur', 
+            'super_admin', 
+            'active', 
+            '123456',
+            TRUE,
+            TRUE
+          )
+        ''');
+        
+        print('✅ Données initiales insérées');
+      }
+    } catch (e) {
+      print('⚠️ Erreur seed data: $e');
+    }
+  }
 
-    print('📋 Database Config Loaded (Local)');
-    print('Host: $host');
-    print('Port: $port');
-    print('Database: $database');
-    print('User: $username');
-    print('SSL: $useSsl');
+  Connection get connection {
+    if (!_isConnected) {
+      throw StateError('Database connection is not initialized. Call getInstance() first and await it.');
+    }
+    return _connection;
+  }
+  
+  bool get isConnected => _isConnected;
+  
+  Future<void> close() async {
+    if (_isConnected) {
+      await _connection.close();
+      _isConnected = false;
+      print('🔌 Connexion PostgreSQL fermée');
+    }
   }
 }
