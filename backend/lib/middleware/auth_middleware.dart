@@ -1,4 +1,5 @@
 import 'package:shelf/shelf.dart';
+
 import '../services/jwt_service.dart';
 
 class AuthMiddleware {
@@ -127,3 +128,4 @@ class AuthMiddleware {
     };
   };
 }
+

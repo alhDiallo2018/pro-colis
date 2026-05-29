@@ -1,4 +1,6 @@
 // lib/services/email_service.dart
+import 'dart:async';
+
 import 'package:logging/logging.dart';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
@@ -43,7 +45,7 @@ class EmailService {
     return emailString;
   }
 
-  /// Envoie un email générique
+  /// Envoie un email générique avec timeout
   Future<bool> sendEmail({
     required String to,
     required String subject,
@@ -51,6 +53,9 @@ class EmailService {
     String? textBody,
   }) async {
     try {
+      _log.info('📧 Préparation envoi email à $to');
+      _log.info('   Sujet: $subject');
+      
       final smtpServer = _createSmtpServer();
       final fromEmail = _extractEmail(smtpFrom);
       
@@ -64,17 +69,28 @@ class EmailService {
         message.text = textBody;
       }
 
-      final sendReport = await send(message, smtpServer);
-      _log.info('Email envoyé à $to: ${sendReport.toString()}');
+      // Envoi avec timeout de 10 secondes
+      final sendReport = await send(message, smtpServer).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          _log.warning('⏰ Timeout lors de l\'envoi à $to (10 secondes)');
+          throw TimeoutException('L\'envoi de l\'email a pris plus de 10 secondes');
+        },
+      );
+      
+      _log.info('✅ Email envoyé avec succès à $to');
+      _log.info('   Rapport: ${sendReport.toString()}');
       return true;
     } catch (e) {
-      _log.severe('Erreur envoi email à $to: $e');
+      _log.severe('❌ Erreur envoi email à $to: $e');
       return false;
     }
   }
 
   /// Envoie un code OTP
   Future<bool> sendOtpCode(String to, String code, {String type = 'connexion'}) async {
+    _log.info('🔐 Envoi du code OTP à $to');
+    
     final subject = '🔐 PRO COLIS - Code de vérification';
     final htmlBody = _buildOtpEmail(code, type);
     final textBody = '''
@@ -88,16 +104,27 @@ Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
 ---
 PRO COLIS - Service de transport interurbain
 ''';
-    return await sendEmail(
+    
+    final result = await sendEmail(
       to: to, 
       subject: subject, 
       htmlBody: htmlBody,
       textBody: textBody,
     );
+    
+    if (result) {
+      _log.info('✅ Code OTP $code envoyé avec succès à $to');
+    } else {
+      _log.severe('❌ Échec envoi du code OTP à $to');
+    }
+    
+    return result;
   }
 
   /// Envoie une confirmation de création de colis
   Future<bool> sendParcelConfirmation(String to, String trackingNumber, String receiverName) async {
+    _log.info('📦 Envoi confirmation colis à $to');
+    
     final subject = '📦 PRO COLIS - Votre colis a été créé';
     final htmlBody = _buildParcelConfirmationEmail(trackingNumber, receiverName);
     final textBody = '''
@@ -115,16 +142,27 @@ Suivez votre colis : https://proscolis.sn/track/$trackingNumber
 ---
 PRO COLIS - Service client disponible 24/7
 ''';
-    return await sendEmail(
+    
+    final result = await sendEmail(
       to: to, 
       subject: subject, 
       htmlBody: htmlBody,
       textBody: textBody,
     );
+    
+    if (result) {
+      _log.info('✅ Confirmation colis envoyée à $to');
+    } else {
+      _log.severe('❌ Échec envoi confirmation colis à $to');
+    }
+    
+    return result;
   }
 
   /// Envoie une notification de livraison
   Future<bool> sendDeliveryNotification(String to, String trackingNumber, String receiverName) async {
+    _log.info('✅ Envoi notification livraison à $to');
+    
     final subject = '✅ PRO COLIS - Colis livré avec succès';
     final htmlBody = _buildDeliveryNotificationEmail(trackingNumber, receiverName);
     final textBody = '''
@@ -142,12 +180,21 @@ Merci d'avoir utilisé PRO COLIS !
 ---
 PRO COLIS - Service de transport interurbain
 ''';
-    return await sendEmail(
+    
+    final result = await sendEmail(
       to: to, 
       subject: subject, 
       htmlBody: htmlBody,
       textBody: textBody,
     );
+    
+    if (result) {
+      _log.info('✅ Notification livraison envoyée à $to');
+    } else {
+      _log.severe('❌ Échec envoi notification livraison à $to');
+    }
+    
+    return result;
   }
 
   /// Envoie une notification de mise à jour de statut
@@ -157,6 +204,8 @@ PRO COLIS - Service de transport interurbain
     String status, 
     String statusLabel
   ) async {
+    _log.info('📬 Envoi mise à jour statut à $to: $statusLabel');
+    
     final subject = '📬 PRO COLIS - Mise à jour de votre colis';
     final htmlBody = _buildStatusUpdateEmail(trackingNumber, status, statusLabel);
     final textBody = '''
@@ -174,12 +223,21 @@ Suivez votre colis : https://proscolis.sn/track/$trackingNumber
 ---
 PRO COLIS - Service de transport interurbain
 ''';
-    return await sendEmail(
+    
+    final result = await sendEmail(
       to: to, 
       subject: subject, 
       htmlBody: htmlBody,
       textBody: textBody,
     );
+    
+    if (result) {
+      _log.info('✅ Mise à jour statut envoyée à $to');
+    } else {
+      _log.severe('❌ Échec envoi mise à jour statut à $to');
+    }
+    
+    return result;
   }
 
   // ==================== TEMPLATES HTML ====================

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:procolis_backend/services/auth_service.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 import 'package:uuid/uuid.dart';
@@ -11,9 +12,13 @@ import '../utils/jwt_helper.dart';
 
 class AuthController {
   final EmailService emailService;
+    late final AuthService _authService;
+
   final _uuid = const Uuid();
 
-  AuthController({required this.emailService});
+  AuthController({required this.emailService}){
+    _authService = AuthService(emailService: emailService);
+  }
 
   Router get router {
     final router = Router();
@@ -34,7 +39,8 @@ class AuthController {
       final body = await request.readAsString();
       final data = jsonDecode(body);
       
-      // Validation des champs requis
+      print('📝 [REGISTER] Requête reçue: ${data['email']}');
+      
       final requiredFields = ['email', 'phone', 'fullName'];
       for (var field in requiredFields) {
         if (data[field] == null || data[field].toString().isEmpty) {
@@ -45,117 +51,10 @@ class AuthController {
         }
       }
       
-      final userId = _uuid.v4();
-      // Générer un PIN par défaut (l'utilisateur pourra le changer)
-      final defaultPin = (100000 + DateTime.now().millisecondsSinceEpoch % 900000).toString();
-      
-      final db = await DatabaseService.getInstance();
-      
-      // Vérifier si l'utilisateur existe déjà
-      final existingUser = await db.connection.execute(
-        'SELECT id FROM users WHERE email = \$1 OR phone = \$2',
-        parameters: [data['email'], data['phone']],
-      );
-      
-      if (existingUser.isNotEmpty) {
-        return Response(409, body: jsonEncode({
-          'success': false,
-          'message': 'Un utilisateur avec cet email ou téléphone existe déjà',
-        }));
-      }
-      
-      // Insérer l'utilisateur avec TOUS les champs
-      await db.connection.execute('''
-        INSERT INTO users (
-          id, email, phone, full_name, password_hash, role, status, pin,
-          address, city, region, country,
-          vehicle_plate, vehicle_model, vehicle_color, vehicle_year,
-          driver_status, gender, garage_id, profile_photo,
-          is_email_verified, is_phone_verified,
-          birth_date, national_id, emergency_contact, emergency_phone,
-          fcm_token, is_approved, approved_by, approved_at,
-          created_by, created_at, updated_at
-        )
-        VALUES (
-          \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8,
-          \$9, \$10, \$11, \$12,
-          \$13, \$14, \$15, \$16,
-          \$17, \$18, \$19, \$20,
-          \$21, \$22,
-          \$23, \$24, \$25, \$26,
-          \$27, \$28, \$29, \$30,
-          \$31, NOW(), NOW()
-        )
-      ''', parameters: [
-        userId,
-        data['email'],
-        data['phone'],
-        data['fullName'],
-        data['password'] ?? null,
-        data['role'] ?? 'client',
-        data['status'] ?? 'active',
-        data['pin'] ?? defaultPin,
-        data['address'],
-        data['city'],
-        data['region'],
-        data['country'] ?? 'Sénégal',
-        data['vehiclePlate'],
-        data['vehicleModel'],
-        data['vehicleColor'],
-        data['vehicleYear'],
-        data['driverStatus'] ?? 'offline',
-        data['gender'],
-        data['garageId'],
-        data['profilePhoto'],
-        data['isEmailVerified'] ?? false,
-        data['isPhoneVerified'] ?? false,
-        data['birthDate'],
-        data['nationalId'],
-        data['emergencyContact'],
-        data['emergencyPhone'],
-        data['fcmToken'],
-        data['isApproved'] ?? false,
-        data['approvedBy'],
-        data['approvedAt'],
-        data['createdBy'],
-      ]);
-      
-      // Générer et envoyer OTP si besoin
-      if (data['sendOtp'] == true) {
-        final otpCode = (100000 + DateTime.now().millisecondsSinceEpoch % 900000).toString();
-        final expiresAt = DateTime.now().add(const Duration(minutes: 10));
-        
-        await db.connection.execute('''
-          INSERT INTO otps (id, user_id, code, type, expires_at, created_at)
-          VALUES (\$1, \$2, \$3, \$4, \$5, NOW())
-        ''', parameters: [
-          _uuid.v4(),
-          userId,
-          otpCode,
-          'verification',
-          expiresAt.toIso8601String(),
-        ]);
-        
-        await emailService.sendOtpCode(data['email'], otpCode);
-      }
-      
-      // Récupérer l'utilisateur créé
-      final userResult = await db.connection.execute(
-        'SELECT * FROM users WHERE id = \$1',
-        parameters: [userId],
-      );
-      
-      final user = User.fromDatabaseRow(userResult.first);
-      
-      return Response.ok(jsonEncode({
-        'success': true,
-        'message': 'Compte créé avec succès',
-        'userId': userId,
-        'pin': data['pin'] ?? defaultPin,
-        'user': user.toJson(),
-      }));
+      final result = await _authService.register(data);
+      return Response.ok(jsonEncode(result));
     } catch (e) {
-      print('❌ Erreur inscription: $e');
+      print('❌ [REGISTER] Erreur: $e');
       return Response.internalServerError(body: jsonEncode({
         'success': false,
         'message': 'Erreur lors de l\'inscription: $e',
