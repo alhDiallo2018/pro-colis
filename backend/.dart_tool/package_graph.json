@@ -20,6 +20,7 @@
         "postgres",
         "shelf",
         "shelf_cors_headers",
+        "shelf_multipart",
         "shelf_router",
         "shelf_static",
         "uuid"
@@ -72,6 +73,16 @@
         "pool",
         "stack_trace",
         "stream_channel"
+      ]
+    },
+    {
+      "name": "shelf_multipart",
+      "version": "2.0.1",
+      "dependencies": [
+        "http_parser",
+        "mime",
+        "shelf",
+        "string_scanner"
       ]
     },
     {
@@ -436,6 +447,23 @@
       "dependencies": []
     },
     {
+      "name": "string_scanner",
+      "version": "1.4.1",
+      "dependencies": [
+        "source_span"
+      ]
+    },
+    {
+      "name": "http_parser",
+      "version": "4.1.2",
+      "dependencies": [
+        "collection",
+        "source_span",
+        "string_scanner",
+        "typed_data"
+      ]
+    },
+    {
       "name": "xml",
       "version": "6.6.1",
       "dependencies": [
@@ -456,16 +484,6 @@
       "name": "web",
       "version": "1.1.1",
       "dependencies": []
-    },
-    {
-      "name": "http_parser",
-      "version": "4.1.2",
-      "dependencies": [
-        "collection",
-        "source_span",
-        "string_scanner",
-        "typed_data"
-      ]
     },
     {
       "name": "intl",
@@ -521,13 +539,6 @@
       "name": "http_methods",
       "version": "1.1.1",
       "dependencies": []
-    },
-    {
-      "name": "string_scanner",
-      "version": "1.4.1",
-      "dependencies": [
-        "source_span"
-      ]
     },
     {
       "name": "web_socket",

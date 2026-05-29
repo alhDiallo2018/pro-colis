@@ -1,6 +1,8 @@
 // lib/services/email_service.dart
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
@@ -14,6 +16,9 @@ class EmailService {
   final String smtpFrom;
   final String fromName;
   final _log = Logger('EmailService');
+  
+  // Pour savoir si on utilise Brevo ou SMTP standard
+  final bool useBrevo;
 
   EmailService({
     required this.smtpHost,
@@ -23,7 +28,7 @@ class EmailService {
     required this.smtpPass,
     required this.smtpFrom,
     this.fromName = 'PRO COLIS',
-  });
+  }) : useBrevo = smtpHost.contains('sendinblue') || smtpHost.contains('brevo');
 
   /// Crée le serveur SMTP configuré
   SmtpServer _createSmtpServer() {
@@ -45,15 +50,65 @@ class EmailService {
     return emailString;
   }
 
-  /// Envoie un email générique avec timeout
-  Future<bool> sendEmail({
+  /// Envoie un email via l'API Brevo (plus rapide)
+  Future<bool> _sendViaBrevo({
     required String to,
     required String subject,
     required String htmlBody,
     String? textBody,
   }) async {
     try {
-      _log.info('📧 Préparation envoi email à $to');
+      _log.info('📧 Envoi via Brevo API à $to');
+      
+      final apiKey = smtpPass;
+      final response = await http.post(
+        Uri.parse('https://api.brevo.com/v3/smtp/email'),
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: jsonEncode({
+          'sender': {
+            'email': _extractEmail(smtpFrom),
+            'name': fromName,
+          },
+          'to': [
+            {'email': to}
+          ],
+          'subject': subject,
+          'htmlContent': htmlBody,
+          'textContent': textBody ?? htmlBody.replaceAll(RegExp(r'<[^>]*>'), ''),
+        }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          _log.warning('⏰ Timeout Brevo API pour $to');
+          throw TimeoutException('Brevo API timeout');
+        },
+      );
+      
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        _log.info('✅ Email Brevo envoyé avec succès à $to');
+        return true;
+      } else {
+        _log.severe('❌ Brevo API error: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      _log.severe('❌ Erreur Brevo: $e');
+      return false;
+    }
+  }
+
+  /// Envoie un email via SMTP standard
+  Future<bool> _sendViaSmtp({
+    required String to,
+    required String subject,
+    required String htmlBody,
+    String? textBody,
+  }) async {
+    try {
+      _log.info('📧 Préparation envoi SMTP à $to');
       _log.info('   Sujet: $subject');
       
       final smtpServer = _createSmtpServer();
@@ -69,21 +124,45 @@ class EmailService {
         message.text = textBody;
       }
 
-      // Envoi avec timeout de 10 secondes
+      // ⬆️ TIMEOUT AUGMENTÉ À 30 SECONDES
       final sendReport = await send(message, smtpServer).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 30),
         onTimeout: () {
-          _log.warning('⏰ Timeout lors de l\'envoi à $to (10 secondes)');
-          throw TimeoutException('L\'envoi de l\'email a pris plus de 10 secondes');
+          _log.warning('⏰ Timeout SMTP pour $to (30 secondes)');
+          throw TimeoutException('L\'envoi de l\'email a pris plus de 30 secondes');
         },
       );
       
-      _log.info('✅ Email envoyé avec succès à $to');
+      _log.info('✅ Email SMTP envoyé avec succès à $to');
       _log.info('   Rapport: ${sendReport.toString()}');
       return true;
     } catch (e) {
-      _log.severe('❌ Erreur envoi email à $to: $e');
+      _log.severe('❌ Erreur SMTP pour $to: $e');
       return false;
+    }
+  }
+
+  /// Envoie un email générique (choisit automatiquement la méthode)
+  Future<bool> sendEmail({
+    required String to,
+    required String subject,
+    required String htmlBody,
+    String? textBody,
+  }) async {
+    if (useBrevo) {
+      return await _sendViaBrevo(
+        to: to,
+        subject: subject,
+        htmlBody: htmlBody,
+        textBody: textBody,
+      );
+    } else {
+      return await _sendViaSmtp(
+        to: to,
+        subject: subject,
+        htmlBody: htmlBody,
+        textBody: textBody,
+      );
     }
   }
 
@@ -382,7 +461,6 @@ PRO COLIS - Service de transport interurbain
   }
 
   String _buildStatusUpdateEmail(String trackingNumber, String status, String statusLabel) {
-    // Couleur du statut
     String statusColor = '#0B6E3A';
     if (status == 'pending') statusColor = '#f39c12';
     if (status == 'shipped') statusColor = '#3498db';

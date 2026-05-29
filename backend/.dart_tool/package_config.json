@@ -290,6 +290,12 @@
       "languageVersion": "2.12"
     },
     {
+      "name": "shelf_multipart",
+      "rootUri": "file:///Users/testad/.pub-cache/hosted/pub.dev/shelf_multipart-2.0.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
+    },
+    {
       "name": "shelf_packages_handler",
       "rootUri": "file:///Users/testad/.pub-cache/hosted/pub.dev/shelf_packages_handler-3.0.2",
       "packageUri": "lib/",
