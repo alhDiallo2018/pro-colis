@@ -527,49 +527,76 @@ Future<Map<String, dynamic>> createParcel(
   }
 
   Future<void> createParcelEvent(
-    String parcelId,
-    String status,
-    String description, {
-    String? location,
-    String? locationLat,
-    String? locationLng,
-    String? userId,
-    String? userName,
-    String? userRole,
-    String? photoUrl,
-    Map<String, dynamic>? metadata,
-  }) async {
-    final db = await DatabaseService.getInstance();
-    final eventId = _uuid.v4();
+  String parcelId,
+  String status,
+  String description, {
+  String? location,
+  String? locationLat,
+  String? locationLng,
+  String? userId,
+  String? userName,
+  String? userRole,
+  String? photoUrl,
+  Map<String, dynamic>? metadata,
+}) async {
+  final db = await DatabaseService.getInstance();
+  final eventId = _uuid.v4();
 
-    try {
-      await db.connection.execute('''
-        INSERT INTO parcel_events (
-          id, parcel_id, status, description, 
-          location, location_lat, location_lng,
-          user_id, user_name, user_role, photo_url,
-          metadata, created_at
-        ) VALUES (
-          \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, NOW()
-        )
-      ''', parameters: [
-        eventId,
-        parcelId,
-        status,
-        description,
-        location,
-        locationLat,
-        locationLng,
-        userId,
-        userName,
-        userRole,
-        photoUrl,
-        metadata != null ? jsonEncode(metadata) : null,
-      ]);
-    } catch (e) {
-      print('⚠️ Erreur création événement: $e');
-    }
+  // Vérifier quelles colonnes existent
+  final columnsResult = await db.connection.execute('''
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name = 'parcel_events'
+  ''');
+  
+  final existingColumns = columnsResult.map((row) => row[0].toString()).toSet();
+
+  // Construire la requête dynamiquement
+  final columns = ['id', 'parcel_id', 'status', 'description', 'created_at'];
+  final values = [eventId, parcelId, status, description, DateTime.now()];
+
+  if (existingColumns.contains('location') && location != null) {
+    columns.add('location');
+    values.add(location);
   }
+  if (existingColumns.contains('location_lat') && locationLat != null) {
+    columns.add('location_lat');
+    values.add(locationLat);
+  }
+  if (existingColumns.contains('location_lng') && locationLng != null) {
+    columns.add('location_lng');
+    values.add(locationLng);
+  }
+  if (existingColumns.contains('user_id') && userId != null) {
+    columns.add('user_id');
+    values.add(userId);
+  }
+  if (existingColumns.contains('user_name') && userName != null) {
+    columns.add('user_name');
+    values.add(userName);
+  }
+  if (existingColumns.contains('user_role') && userRole != null) {
+    columns.add('user_role');
+    values.add(userRole);
+  }
+  if (existingColumns.contains('photo_url') && photoUrl != null) {
+    columns.add('photo_url');
+    values.add(photoUrl);
+  }
+  if (existingColumns.contains('metadata') && metadata != null) {
+    columns.add('metadata');
+    values.add(jsonEncode(metadata));
+  }
+
+  final placeholders = List.generate(values.length, (i) => '\$${i + 1}').join(', ');
+  final sql = 'INSERT INTO parcel_events (${columns.join(', ')}) VALUES ($placeholders)';
+
+  try {
+    await db.connection.execute(sql, parameters: values);
+  } catch (e) {
+    print('⚠️ Erreur création événement: $e');
+  }
+}
 
   // ==================== MISES À JOUR DE STATUT ====================
 
