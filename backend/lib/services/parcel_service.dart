@@ -41,7 +41,8 @@ class ParcelService {
   }
 
   // ==================== VÉRIFICATION DES COLONNES ====================
-  
+
+  // ignore: unused_element
   Future<Map<String, bool>> _checkColumns() async {
     final db = await DatabaseService.getInstance();
     final columns = {
@@ -50,14 +51,14 @@ class ParcelService {
       'urgent_fee': false,
       'insurance_amount': false,
     };
-    
+
     try {
       final result = await db.connection.execute('''
         SELECT column_name 
         FROM information_schema.columns 
         WHERE table_name = 'parcels'
       ''');
-      
+
       for (final row in result) {
         final colName = row[0].toString();
         if (columns.containsKey(colName)) {
@@ -67,7 +68,7 @@ class ParcelService {
     } catch (e) {
       print('⚠️ Erreur vérification colonnes: $e');
     }
-    
+
     return columns;
   }
 
@@ -75,210 +76,163 @@ class ParcelService {
 
   // Créer un colis avec tous les champs
   Future<Map<String, dynamic>> createParcel(
-      String userId, Map<String, dynamic> data) async {
-    final db = await DatabaseService.getInstance();
-    final parcelId = _uuid.v4();
-    final trackingNumber = _generateTrackingNumber();
+    String userId, Map<String, dynamic> data) async {
+  final db = await DatabaseService.getInstance();
+  final parcelId = _uuid.v4();
+  final trackingNumber = _generateTrackingNumber();
 
-    // Vérifier les colonnes disponibles
-    final availableColumns = await _checkColumns();
-    
-    print('📝 Insertion colis:');
-    print('  - trackingNumber: $trackingNumber');
-    print('  - totalAmount: ${data['totalAmount']} FCFA');
+  print('📝 Insertion colis:');
+  print('  - trackingNumber: $trackingNumber');
+  print('  - price: ${data['price']}');
+  print('  - totalAmount: ${data['totalAmount']}');
 
-    // Récupérer le rôle de l'utilisateur
-    final userResult = await db.connection.execute(
-      'SELECT full_name, phone, role FROM users WHERE id = \$1',
-      parameters: [userId],
+  // Récupérer le rôle de l'utilisateur
+  final userResult = await db.connection.execute(
+    'SELECT full_name, phone, role FROM users WHERE id = \$1',
+    parameters: [userId],
+  );
+
+  final currentUserName = userResult.first[0].toString();
+  final currentUserPhone = userResult.first[1].toString();
+  final userRole = userResult.first[2].toString();
+  final isDriver = userRole == 'driver';
+  final initialStatus = isDriver ? 'confirmed' : 'pending';
+
+  // Auto-assignation du chauffeur
+  final driverId = isDriver ? userId : data['driverId']?.toString();
+  final driverName = isDriver ? currentUserName : data['driverName']?.toString();
+  final driverPhone = isDriver ? currentUserPhone : data['driverPhone']?.toString();
+
+  // Données
+  final senderName = data['senderName']?.toString();
+  final senderPhone = data['senderPhone']?.toString();
+  final senderEmail = data['senderEmail']?.toString();
+  final String? senderId = data['senderId'] != null && data['senderId'].toString().isNotEmpty
+      ? data['senderId'].toString()
+      : null;
+
+  final receiverName = data['receiverName']?.toString();
+  final receiverPhone = data['receiverPhone']?.toString();
+  final receiverEmail = data['receiverEmail']?.toString();
+  final receiverAddress = data['receiverAddress']?.toString();
+
+  final arrivalGarageId = data['arrivalGarageId']?.toString();
+  final arrivalGarageName = data['arrivalGarageName']?.toString();
+  final notes = data['notes']?.toString();
+  final pickupDate = data['pickupDate']?.toString();
+  final estimatedDeliveryDate = data['estimatedDeliveryDate']?.toString();
+
+  // ✅ CORRECTION : Utiliser des listes Dart au lieu de JSON
+  final List<String> photoUrls = data['photoUrls'] != null 
+      ? List<String>.from(data['photoUrls']) 
+      : [];
+      
+  final List<String> videoUrls = data['videoUrls'] != null 
+      ? List<String>.from(data['videoUrls']) 
+      : [];
+
+  final isInsured = data['isInsured'] == true;
+  final isUrgent = data['isUrgent'] == true;
+  final price = data['price'] != null ? (data['price'] as num).toDouble() : 0;
+  final deliveryFees = data['deliveryFees'] != null ? (data['deliveryFees'] as num).toDouble() : 0;
+  final totalAmount = data['totalAmount'] != null 
+      ? (data['totalAmount'] as num).toDouble() 
+      : price + deliveryFees;
+
+  final paymentMethod = data['paymentMethod']?.toString();
+  final paymentPhoneNumber = data['paymentPhoneNumber']?.toString();
+  final paymentStatus = 'pending';
+
+  final sql = '''
+    INSERT INTO parcels (
+      id, tracking_number, 
+      sender_id, sender_name, sender_phone, sender_email,
+      receiver_name, receiver_phone, receiver_email, receiver_address,
+      description, weight, type, status,
+      departure_garage_id, departure_garage_name,
+      arrival_garage_id, arrival_garage_name,
+      driver_id, driver_name, driver_phone,
+      price, is_urgent, is_insured,
+      payment_method, payment_phone_number, payment_status,
+      photo_urls, video_urls, notes,
+      pickup_date, estimated_delivery_date,
+      created_by, created_at, updated_at,
+      total_amount, delivery_fees
+    ) VALUES (
+      \$1, \$2, \$3, \$4, \$5, \$6,
+      \$7, \$8, \$9, \$10,
+      \$11, \$12, \$13, \$14,
+      \$15, \$16, \$17, \$18,
+      \$19, \$20, \$21,
+      \$22, \$23, \$24,
+      \$25, \$26, \$27,
+      \$28, \$29, \$30,
+      \$31, \$32,
+      \$33, NOW(), NOW(),
+      \$34, \$35
+    )
+  ''';
+
+  final values = [
+    parcelId, trackingNumber,
+    senderId, senderName, senderPhone, senderEmail,
+    receiverName, receiverPhone, receiverEmail, receiverAddress,
+    data['description']?.toString() ?? '', (data['weight'] as num).toDouble(), 
+    data['type']?.toString() ?? 'package', initialStatus,
+    data['departureGarageId']?.toString(), data['departureGarageName']?.toString(),
+    arrivalGarageId, arrivalGarageName,
+    driverId, driverName, driverPhone,
+    price, isUrgent, isInsured,
+    paymentMethod, paymentPhoneNumber, paymentStatus,
+    photoUrls,  // ✅ Liste Dart → sera converti en tableau PostgreSQL
+    videoUrls,  // ✅ Liste Dart → sera converti en tableau PostgreSQL
+    notes,
+    pickupDate != null ? DateTime.tryParse(pickupDate) : null,
+    estimatedDeliveryDate != null ? DateTime.tryParse(estimatedDeliveryDate) : null,
+    userId,
+    totalAmount,
+    deliveryFees,
+  ];
+
+  print('📝 SQL: $sql');
+  print('📝 photoUrls: $photoUrls');
+  print('📝 videoUrls: $videoUrls');
+
+  try {
+    await db.connection.execute(sql, parameters: values);
+
+    // Événement de création
+    await createParcelEvent(
+      parcelId,
+      initialStatus,
+      'Colis créé par $currentUserName',
+      userId: userId,
+      userName: currentUserName,
+      metadata: {
+        'type': 'creation',
+        'weight': data['weight'],
+        'trackingNumber': trackingNumber,
+        'clientName': senderName,
+        'totalAmount': totalAmount,
+      },
     );
 
-    final currentUserName = userResult.first[0].toString();
-    final currentUserPhone = userResult.first[1].toString();
-    final userRole = userResult.first[2].toString();
-    final isDriver = userRole == 'driver';
-    final initialStatus = isDriver ? 'confirmed' : 'pending';
-
-    // Auto-assignation du chauffeur
-    final driverId = isDriver ? userId : data['driverId']?.toString();
-    final driverName = isDriver ? currentUserName : data['driverName']?.toString();
-    final driverPhone = isDriver ? currentUserPhone : data['driverPhone']?.toString();
-
-    // Données expéditeur
-    final senderName = data['senderName']?.toString();
-    final senderPhone = data['senderPhone']?.toString();
-    final senderEmail = data['senderEmail']?.toString();
-    final String? senderId = data['senderId'] != null && data['senderId'].toString().isNotEmpty
-        ? data['senderId'].toString()
-        : null;
-
-    // Données destinataire
-    final receiverName = data['receiverName']?.toString();
-    final receiverPhone = data['receiverPhone']?.toString();
-    final receiverEmail = data['receiverEmail']?.toString();
-    final receiverAddress = data['receiverAddress']?.toString();
-
-    // Trajet
-    final arrivalGarageId = data['arrivalGarageId']?.toString();
-    final arrivalGarageName = data['arrivalGarageName']?.toString();
-    final notes = data['notes']?.toString();
-    final pickupDate = data['pickupDate']?.toString();
-    final estimatedDeliveryDate = data['estimatedDeliveryDate']?.toString();
-
-    // Médias
-    final photoUrlsJson = jsonEncode(data['photoUrls'] ?? []);
-    final videoUrlsJson = jsonEncode(data['videoUrls'] ?? []);
-
-    // Options
-    final isInsured = data['isInsured'] == true;
-    final isUrgent = data['isUrgent'] == true;
-    final price = data['price'] != null ? (data['price'] as num).toDouble() : 0;
-    final deliveryFees = data['deliveryFees'] != null ? (data['deliveryFees'] as num).toDouble() : 0;
-    
-    // Calculs
-    double? urgentFee = isUrgent ? 500.0 : null;
-    double? insuranceAmount = (isInsured && price > 0) ? price * 0.02 : null;
-    double? totalAmount = data['totalAmount'] != null 
-        ? (data['totalAmount'] as num).toDouble() 
-        : price + deliveryFees + (isUrgent ? 500 : 0) + (isInsured && price > 0 ? price * 0.02 : 0);
-
-    // Paiement
-    final paymentMethod = data['paymentMethod']?.toString();
-    final paymentPhoneNumber = data['paymentPhoneNumber']?.toString();
-    final paymentStatus = 'pending';
-
-    print('  - price: $price');
-    print('  - deliveryFees: $deliveryFees');
-    print('  - totalAmount: $totalAmount');
-    print('  - urgent: $isUrgent');
-    print('  - insured: $isInsured');
-
-    // Construction de la requête de base
-    final columns = [
-      'id', 'tracking_number',
-      'sender_id', 'sender_name', 'sender_phone', 'sender_email',
-      'receiver_name', 'receiver_phone', 'receiver_email', 'receiver_address',
-      'description', 'weight', 'type', 'status',
-      'departure_garage_id', 'departure_garage_name',
-      'arrival_garage_id', 'arrival_garage_name',
-      'driver_id', 'driver_name', 'driver_phone',
-      'price', 'is_urgent', 'is_insured',
-      'payment_method', 'payment_phone_number', 'payment_status',
-      'photo_urls', 'video_urls',
-      'notes', 'pickup_date', 'estimated_delivery_date',
-      'created_by', 'created_at', 'updated_at'
-    ];
-
-    final values = [
-      parcelId, trackingNumber,
-      senderId, senderName, senderPhone, senderEmail,
-      receiverName, receiverPhone, receiverEmail, receiverAddress,
-      data['description']?.toString() ?? '', (data['weight'] as num).toDouble(), data['type']?.toString() ?? 'package', initialStatus,
-      data['departureGarageId']?.toString(), data['departureGarageName']?.toString(),
-      arrivalGarageId, arrivalGarageName,
-      driverId, driverName, driverPhone,
-      price, isUrgent, isInsured,
-      paymentMethod, paymentPhoneNumber, paymentStatus,
-      photoUrlsJson, videoUrlsJson,
-      notes, pickupDate, estimatedDeliveryDate,
-      userId, DateTime.now(), DateTime.now()
-    ];
-
-    // Ajouter les colonnes optionnelles si elles existent
-    if (availableColumns['total_amount'] == true) {
-      columns.add('total_amount');
-      values.add(totalAmount);
-    }
-    
-    if (availableColumns['delivery_fees'] == true) {
-      columns.add('delivery_fees');
-      values.add(deliveryFees);
-    }
-    
-    if (availableColumns['urgent_fee'] == true && urgentFee != null) {
-      columns.add('urgent_fee');
-      values.add(urgentFee);
-    }
-    
-    if (availableColumns['insurance_amount'] == true && insuranceAmount != null) {
-      columns.add('insurance_amount');
-      values.add(insuranceAmount);
-    }
-
-    // Construire la requête SQL
-    final placeholders = List.generate(values.length, (i) => '\$${i + 1}').join(', ');
-    final sql = 'INSERT INTO parcels (${columns.join(', ')}) VALUES ($placeholders)';
-    
-    print('📝 SQL: $sql');
-
-    try {
-      await db.connection.execute(sql, parameters: values);
-
-      // Ajouter les photos dans parcel_photos si la table existe
-      if (data['photoUrls'] != null && (data['photoUrls'] as List).isNotEmpty) {
-        try {
-          for (final photoUrl in data['photoUrls']) {
-            await db.connection.execute(
-              'INSERT INTO parcel_photos (parcel_id, url) VALUES (\$1, \$2)',
-              parameters: [parcelId, photoUrl.toString()],
-            );
-          }
-        } catch (e) {
-          print('⚠️ Table parcel_photos non trouvée: $e');
-        }
-      }
-
-      // Événement de création
-      await createParcelEvent(
-        parcelId,
-        initialStatus,
-        'Colis créé par $currentUserName',
-        userId: userId,
-        userName: currentUserName,
-        metadata: {
-          'type': 'creation',
-          'weight': data['weight'],
-          'trackingNumber': trackingNumber,
-          'isUrgent': isUrgent,
-          'isInsured': isInsured,
-          'clientName': senderName,
-          'clientPhone': senderPhone,
-          'totalAmount': totalAmount,
-        },
-      );
-
-      // Événement de confirmation pour les chauffeurs
-      if (isDriver) {
-        await createParcelEvent(
-          parcelId,
-          'confirmed',
-          'Colis confirmé et prêt pour le transport',
-          userId: userId,
-          userName: currentUserName,
-          metadata: {
-            'type': 'confirmation',
-            'driverId': driverId,
-            'driverName': driverName,
-          },
-        );
-      }
-
-      return {
-        'success': true,
-        'id': parcelId,
-        'trackingNumber': trackingNumber,
-        'status': initialStatus,
-        'createdAt': DateTime.now().toIso8601String(),
-        'driverId': driverId,
-        'driverName': driverName,
-        'senderName': senderName,
-        'totalAmount': totalAmount,
-      };
-    } catch (e) {
-      print('❌ Erreur insertion colis: $e');
-      return {'success': false, 'error': e.toString()};
-    }
+    return {
+      'success': true,
+      'id': parcelId,
+      'trackingNumber': trackingNumber,
+      'status': initialStatus,
+      'createdAt': DateTime.now().toIso8601String(),
+      'driverId': driverId,
+      'driverName': driverName,
+      'senderName': senderName,
+      'totalAmount': totalAmount,
+    };
+  } catch (e) {
+    print('❌ Erreur insertion colis: $e');
+    return {'success': false, 'error': e.toString()};
   }
+}
 
   // ==================== LECTURE ====================
 
@@ -444,15 +398,20 @@ class ParcelService {
         'videoUrls': safeJsonDecode(row[33]),
         'signatureUrl': row[34],
         'notes': row[35],
-        'pickupDate': row[36] != null ? (row[36] as DateTime).toIso8601String() : null,
-        'deliveryDate': row[37] != null ? (row[37] as DateTime).toIso8601String() : null,
-        'estimatedDeliveryDate': row[38] != null ? (row[38] as DateTime).toIso8601String() : null,
+        'pickupDate':
+            row[36] != null ? (row[36] as DateTime).toIso8601String() : null,
+        'deliveryDate':
+            row[37] != null ? (row[37] as DateTime).toIso8601String() : null,
+        'estimatedDeliveryDate':
+            row[38] != null ? (row[38] as DateTime).toIso8601String() : null,
         'createdBy': row[39],
         'createdAt': (row[40] as DateTime).toIso8601String(),
-        'updatedAt': row[41] != null ? (row[41] as DateTime).toIso8601String() : null,
+        'updatedAt':
+            row[41] != null ? (row[41] as DateTime).toIso8601String() : null,
         'cancelledBy': row[42],
         'cancellationReason': row[43],
-        'cancelledAt': row[44] != null ? (row[44] as DateTime).toIso8601String() : null,
+        'cancelledAt':
+            row[44] != null ? (row[44] as DateTime).toIso8601String() : null,
         'events': events,
       };
     } catch (e) {
@@ -477,27 +436,33 @@ class ParcelService {
         FROM parcels WHERE driver_id = \$1 ORDER BY created_at DESC
       ''', parameters: [driverId]);
 
-      return result.map((row) => {
-        'id': row[0],
-        'trackingNumber': row[1],
-        'senderName': row[2],
-        'senderPhone': row[3],
-        'receiverName': row[4],
-        'receiverPhone': row[5],
-        'description': row[6],
-        'weight': row[7],
-        'type': row[8],
-        'status': row[9],
-        'departureGarageName': row[10],
-        'arrivalGarageName': row[11],
-        'price': row[12],
-        'totalAmount': row[13],
-        'paymentMethod': row[14],
-        'paymentStatus': row[15],
-        'pickupDate': row[16] != null ? (row[16] as DateTime).toIso8601String() : null,
-        'deliveryDate': row[17] != null ? (row[17] as DateTime).toIso8601String() : null,
-        'createdAt': (row[18] as DateTime).toIso8601String(),
-      }).toList();
+      return result
+          .map((row) => {
+                'id': row[0],
+                'trackingNumber': row[1],
+                'senderName': row[2],
+                'senderPhone': row[3],
+                'receiverName': row[4],
+                'receiverPhone': row[5],
+                'description': row[6],
+                'weight': row[7],
+                'type': row[8],
+                'status': row[9],
+                'departureGarageName': row[10],
+                'arrivalGarageName': row[11],
+                'price': row[12],
+                'totalAmount': row[13],
+                'paymentMethod': row[14],
+                'paymentStatus': row[15],
+                'pickupDate': row[16] != null
+                    ? (row[16] as DateTime).toIso8601String()
+                    : null,
+                'deliveryDate': row[17] != null
+                    ? (row[17] as DateTime).toIso8601String()
+                    : null,
+                'createdAt': (row[18] as DateTime).toIso8601String(),
+              })
+          .toList();
     } catch (e) {
       print('❌ Erreur getDriverParcels: $e');
       return [];
@@ -585,9 +550,17 @@ class ParcelService {
           \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, NOW()
         )
       ''', parameters: [
-        eventId, parcelId, status, description,
-        location, locationLat, locationLng,
-        userId, userName, userRole, photoUrl,
+        eventId,
+        parcelId,
+        status,
+        description,
+        location,
+        locationLat,
+        locationLng,
+        userId,
+        userName,
+        userRole,
+        photoUrl,
         metadata != null ? jsonEncode(metadata) : null,
       ]);
     } catch (e) {
@@ -641,7 +614,8 @@ class ParcelService {
   // ==================== RECHERCHE PAR NUMÉRO DE SUIVI ====================
 
   // Récupérer un colis par numéro de suivi
-  Future<Map<String, dynamic>?> getParcelByTrackingNumber(String trackingNumber) async {
+  Future<Map<String, dynamic>?> getParcelByTrackingNumber(
+      String trackingNumber) async {
     final db = await DatabaseService.getInstance();
 
     try {
@@ -718,15 +692,22 @@ class ParcelService {
     String? updatedByName,
   }) async {
     final db = await DatabaseService.getInstance();
-    
+
     try {
       final oldParcel = await getParcelById(parcelId);
       if (oldParcel == null) return null;
 
       final changes = <String, dynamic>{};
       final allowedFields = [
-        'receiver_name', 'receiver_phone', 'receiver_email', 'receiver_address',
-        'description', 'weight', 'notes', 'price', 'total_amount'
+        'receiver_name',
+        'receiver_phone',
+        'receiver_email',
+        'receiver_address',
+        'description',
+        'weight',
+        'notes',
+        'price',
+        'total_amount'
       ];
       final setClauses = <String>[];
       final values = <dynamic>[parcelId];
@@ -736,7 +717,10 @@ class ParcelService {
         if (allowedFields.contains(entry.key)) {
           setClauses.add('$entry.key = \$$index');
           values.add(entry.value);
-          changes[entry.key] = {'old': oldParcel[entry.key], 'new': entry.value};
+          changes[entry.key] = {
+            'old': oldParcel[entry.key],
+            'new': entry.value
+          };
           index++;
         }
       }
@@ -798,7 +782,7 @@ class ParcelService {
   Future<Map<String, dynamic>?> confirmPickup(
       String parcelId, String driverId) async {
     final db = await DatabaseService.getInstance();
-    
+
     try {
       final driverResult = await db.connection.execute(
         'SELECT full_name FROM users WHERE id = \$1',
@@ -823,7 +807,7 @@ class ParcelService {
       String parcelId, String driverId,
       {String? location}) async {
     final db = await DatabaseService.getInstance();
-    
+
     try {
       final driverResult = await db.connection.execute(
         'SELECT full_name FROM users WHERE id = \$1',
@@ -848,7 +832,7 @@ class ParcelService {
   Future<Map<String, dynamic>?> markAsArrived(String parcelId, String driverId,
       {String? location}) async {
     final db = await DatabaseService.getInstance();
-    
+
     try {
       final driverResult = await db.connection.execute(
         'SELECT full_name FROM users WHERE id = \$1',
@@ -874,7 +858,7 @@ class ParcelService {
       String parcelId, String driverId,
       {String? location}) async {
     final db = await DatabaseService.getInstance();
-    
+
     try {
       final driverResult = await db.connection.execute(
         'SELECT full_name FROM users WHERE id = \$1',
@@ -899,7 +883,7 @@ class ParcelService {
   Future<Map<String, dynamic>?> confirmDelivery(
       String parcelId, String driverId, Map<String, dynamic> data) async {
     final db = await DatabaseService.getInstance();
-    
+
     try {
       final driverResult = await db.connection.execute(
         'SELECT full_name FROM users WHERE id = \$1',
@@ -942,22 +926,24 @@ class ParcelService {
         ORDER BY p.created_at DESC
       ''', parameters: [garageId]);
 
-      return result.map((row) => ({
-        'id': row[0],
-        'trackingNumber': row[1],
-        'senderName': row[2],
-        'receiverName': row[3],
-        'receiverPhone': row[4],
-        'status': row[5],
-        'driverId': row[6],
-        'driverName': row[7],
-        'description': row[8],
-        'weight': row[9],
-        'type': row[10],
-        'price': row[11],
-        'totalAmount': row[12],
-        'createdAt': (row[13] as DateTime).toIso8601String(),
-      })).toList();
+      return result
+          .map((row) => ({
+                'id': row[0],
+                'trackingNumber': row[1],
+                'senderName': row[2],
+                'receiverName': row[3],
+                'receiverPhone': row[4],
+                'status': row[5],
+                'driverId': row[6],
+                'driverName': row[7],
+                'description': row[8],
+                'weight': row[9],
+                'type': row[10],
+                'price': row[11],
+                'totalAmount': row[12],
+                'createdAt': (row[13] as DateTime).toIso8601String(),
+              }))
+          .toList();
     } catch (e) {
       print('❌ Erreur getGarageParcels: $e');
       return [];
@@ -1020,16 +1006,18 @@ class ParcelService {
         FROM parcels ORDER BY created_at DESC
       ''');
 
-      return result.map((row) => ({
-        'id': row[0],
-        'trackingNumber': row[1],
-        'senderName': row[2],
-        'receiverName': row[3],
-        'status': row[4],
-        'totalAmount': row[5],
-        'price': row[6],
-        'createdAt': (row[7] as DateTime).toIso8601String(),
-      })).toList();
+      return result
+          .map((row) => ({
+                'id': row[0],
+                'trackingNumber': row[1],
+                'senderName': row[2],
+                'receiverName': row[3],
+                'status': row[4],
+                'totalAmount': row[5],
+                'price': row[6],
+                'createdAt': (row[7] as DateTime).toIso8601String(),
+              }))
+          .toList();
     } catch (e) {
       print('❌ Erreur getAllParcels: $e');
       return [];
@@ -1077,5 +1065,4 @@ class ParcelService {
       'parcels': filtered,
     };
   }
-
 }
