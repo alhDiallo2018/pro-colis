@@ -381,100 +381,107 @@ class DriverRoutes {
     });
 
     // Mettre à jour les médias du colis (photos et vidéos) - Version PATCH
-    router.patch('/parcels/<parcelId>/media', (Request request, String parcelId) async {
-      final authCheck = await _authMiddleware(request);
-      if (authCheck != null) return authCheck;
+    // Mettre à jour les médias du colis (photos et vidéos) - Version avec Set pour éliminer les doublons
+router.patch('/parcels/<parcelId>/media', (Request request, String parcelId) async {
+  final authCheck = await _authMiddleware(request);
+  if (authCheck != null) return authCheck;
 
-      final userId = JwtHelper.extractUserId(request)!;
-      print('🔑 Mise à jour médias pour parcels: $parcelId');
+  final userId = JwtHelper.extractUserId(request)!;
+  print('🔑 Mise à jour médias pour parcels: $parcelId');
 
-      try {
-        final body = await request.readAsString();
-        final data = jsonDecode(body);
-        
-        final List<String> newPhotoUrls = (data['photoUrls'] as List?)?.cast<String>() ?? [];
-        final List<String> newVideoUrls = (data['videoUrls'] as List?)?.cast<String>() ?? [];
-        
-        print('📸 Nouvelles photos: $newPhotoUrls');
-        print('🎬 Nouvelles vidéos: $newVideoUrls');
-        
-        final db = await DatabaseService.getInstance();
-        
-        // Récupérer les URLs existantes
-        final existingResult = await db.connection.execute('''
-          SELECT photo_urls, video_urls FROM parcels WHERE id = \$1 AND driver_id = \$2
-        ''', parameters: [parcelId, userId]);
-        
-        if (existingResult.isEmpty) {
-          return Response.notFound(
-            jsonEncode({'success': false, 'message': 'Colis non trouvé ou non autorisé'})
-          );
-        }
-        
-        final existingRow = existingResult.first;
-        List<String> existingPhotoUrls = [];
-        List<String> existingVideoUrls = [];
-        
-        // Fonction pour convertir PostgreSQL ARRAY en List
-        List<String> pgArrayToList(dynamic pgArray) {
-          if (pgArray == null) return [];
-          String str = pgArray.toString();
-          if (str.isEmpty || str == '{}') return [];
-          str = str.substring(1, str.length - 1);
-          if (str.isEmpty) return [];
-          return str.split(',').map((s) => s.trim()).toList();
-        }
-        
-        existingPhotoUrls = pgArrayToList(existingRow[0]);
-        existingVideoUrls = pgArrayToList(existingRow[1]);
-        
-        print('📸 Photos existantes: $existingPhotoUrls');
-        print('🎬 Vidéos existantes: $existingVideoUrls');
-        
-        // Fusionner les URLs
-        final allPhotoUrls = [...existingPhotoUrls, ...newPhotoUrls];
-        final allVideoUrls = [...existingVideoUrls, ...newVideoUrls];
-        
-        // Fonction pour convertir List en PostgreSQL ARRAY
-        String listToPgArray(List<String> list) {
-          if (list.isEmpty) return '{}';
-          return '{${list.join(',')}}';
-        }
-        
-        final pgPhotoUrls = listToPgArray(allPhotoUrls);
-        final pgVideoUrls = listToPgArray(allVideoUrls);
-        
-        print('📸 Photos finales (PG): $pgPhotoUrls');
-        print('🎬 Vidéos finales (PG): $pgVideoUrls');
-        
-        // Mettre à jour
-        await db.connection.execute('''
-          UPDATE parcels 
-          SET photo_urls = \$3::TEXT[], video_urls = \$4::TEXT[], updated_at = NOW()
-          WHERE id = \$1 AND driver_id = \$2
-        ''', parameters: [
-          parcelId, 
-          userId, 
-          pgPhotoUrls, 
-          pgVideoUrls
-        ]);
-        
-        // Récupérer le colis mis à jour
-        final updatedParcel = await _parcelService.getParcelById(parcelId);
-        
-        return Response.ok(jsonEncode({
-          'success': true,
-          'message': 'Médias mis à jour avec succès',
-          'parcel': updatedParcel
-        }));
-      } catch (e) {
-        print('❌ Erreur mise à jour médias: $e');
-        return Response.internalServerError(
-          body: jsonEncode({'success': false, 'message': e.toString()})
-        );
-      }
-    });
-
+  try {
+    final body = await request.readAsString();
+    final data = jsonDecode(body);
+    
+    final List<String> newPhotoUrls = (data['photoUrls'] as List?)?.cast<String>() ?? [];
+    final List<String> newVideoUrls = (data['videoUrls'] as List?)?.cast<String>() ?? [];
+    
+    print('📸 Nouvelles photos reçues: $newPhotoUrls');
+    print('🎬 Nouvelles vidéos reçues: $newVideoUrls');
+    
+    final db = await DatabaseService.getInstance();
+    
+    // Récupérer les URLs existantes
+    final existingResult = await db.connection.execute('''
+      SELECT photo_urls, video_urls FROM parcels WHERE id = \$1 AND driver_id = \$2
+    ''', parameters: [parcelId, userId]);
+    
+    if (existingResult.isEmpty) {
+      return Response.notFound(
+        jsonEncode({'success': false, 'message': 'Colis non trouvé ou non autorisé'})
+      );
+    }
+    
+    final existingRow = existingResult.first;
+    
+    // Fonction pour convertir PostgreSQL ARRAY en List<String>
+    List<String> pgArrayToList(dynamic pgArray) {
+      if (pgArray == null) return [];
+      String str = pgArray.toString();
+      if (str.isEmpty || str == '{}') return [];
+      // Enlever les {} du début et de la fin
+      str = str.substring(1, str.length - 1);
+      if (str.isEmpty) return [];
+      // Split par les virgules et nettoyer
+      return str.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    }
+    
+    final List<String> existingPhotoUrls = pgArrayToList(existingRow[0]);
+    final List<String> existingVideoUrls = pgArrayToList(existingRow[1]);
+    
+    print('📸 Photos existantes: $existingPhotoUrls');
+    print('🎬 Vidéos existantes: $existingVideoUrls');
+    
+    // ✅ UTILISATION DE SET POUR ÉLIMINER LES DOUBLONS
+    final Set<String> allPhotoUrlsSet = {...existingPhotoUrls, ...newPhotoUrls};
+    final Set<String> allVideoUrlsSet = {...existingVideoUrls, ...newVideoUrls};
+    
+    final List<String> allPhotoUrls = allPhotoUrlsSet.toList();
+    final List<String> allVideoUrls = allVideoUrlsSet.toList();
+    
+    print('📸 Photos finales (sans doublons): $allPhotoUrls');
+    print('🎬 Vidéos finales (sans doublons): $allVideoUrls');
+    
+    // Fonction pour convertir List en PostgreSQL ARRAY
+    String listToPgArray(List<String> list) {
+      if (list.isEmpty) return '{}';
+      return '{${list.join(',')}}';
+    }
+    
+    final String pgPhotoUrls = listToPgArray(allPhotoUrls);
+    final String pgVideoUrls = listToPgArray(allVideoUrls);
+    
+    // Mettre à jour la base de données
+    await db.connection.execute('''
+      UPDATE parcels 
+      SET photo_urls = \$3::TEXT[], 
+          video_urls = \$4::TEXT[], 
+          updated_at = NOW()
+      WHERE id = \$1 AND driver_id = \$2
+    ''', parameters: [
+      parcelId, 
+      userId, 
+      pgPhotoUrls, 
+      pgVideoUrls
+    ]);
+    
+    print('✅ Médias mis à jour avec succès pour le colis $parcelId');
+    
+    // Récupérer le colis mis à jour
+    final updatedParcel = await _parcelService.getParcelById(parcelId);
+    
+    return Response.ok(jsonEncode({
+      'success': true,
+      'message': 'Médias mis à jour avec succès',
+      'parcel': updatedParcel
+    }));
+  } catch (e) {
+    print('❌ Erreur mise à jour médias: $e');
+    return Response.internalServerError(
+      body: jsonEncode({'success': false, 'message': e.toString()})
+    );
+  }
+});
     // Confirmer livraison
     router.put('/parcels/<parcelId>/deliver',
         (Request request, String parcelId) async {
