@@ -380,6 +380,137 @@ class DriverRoutes {
       }
     });
 
+
+    router.patch('/parcels/<parcelId>/media', (Request request, String parcelId) async {
+  final authCheck = await _authMiddleware(request);
+  if (authCheck != null) return authCheck;
+
+  final userId = JwtHelper.extractUserId(request)!;
+  print('🔑 Driver ID: $userId');
+  print('🔍 Mise à jour médias (PATCH) pour parcels: $parcelId');
+
+  try {
+    final body = await request.readAsString();
+    final data = jsonDecode(body);
+    
+    final List<String> photoUrls = (data['photoUrls'] as List?)?.cast<String>() ?? [];
+    final List<String> videoUrls = (data['videoUrls'] as List?)?.cast<String>() ?? [];
+    
+    print('📸 Photos à ajouter: $photoUrls');
+    print('🎬 Vidéos à ajouter: $videoUrls');
+    
+    final db = await DatabaseService.getInstance();
+    
+    // Récupérer les URLs existantes
+    final existingResult = await db.connection.execute('''
+      SELECT photo_urls, video_urls FROM parcels WHERE id = \$1 AND driver_id = \$2
+    ''', parameters: [parcelId, userId]);
+    
+    if (existingResult.isEmpty) {
+      return Response.notFound(
+        jsonEncode({'success': false, 'message': 'Colis non trouvé ou non autorisé'})
+      );
+    }
+    
+    final existingRow = existingResult.first;
+    List<String> existingPhotoUrls = [];
+    List<String> existingVideoUrls = [];
+    
+    if (existingRow[0] != null) {
+      try {
+        final decoded = jsonDecode(existingRow[0] as String);
+        existingPhotoUrls = List<String>.from(decoded);
+      } catch (e) {
+        existingPhotoUrls = [];
+      }
+    }
+    
+    if (existingRow[1] != null) {
+      try {
+        final decoded = jsonDecode(existingRow[1] as String);
+        existingVideoUrls = List<String>.from(decoded);
+      } catch (e) {
+        existingVideoUrls = [];
+      }
+    }
+    
+    // Fusionner les URLs (ajouter les nouvelles)
+    final allPhotoUrls = [...existingPhotoUrls, ...photoUrls];
+    final allVideoUrls = [...existingVideoUrls, ...videoUrls];
+    
+    // Mettre à jour
+    await db.connection.execute('''
+      UPDATE parcels 
+      SET photo_urls = \$3, video_urls = \$4, updated_at = NOW()
+      WHERE id = \$1 AND driver_id = \$2
+    ''', parameters: [
+      parcelId, 
+      userId, 
+      jsonEncode(allPhotoUrls), 
+      jsonEncode(allVideoUrls)
+    ]);
+    
+    // Récupérer le colis mis à jour
+    final updatedParcel = await _parcelService.getParcelById(parcelId);
+    
+    return Response.ok(jsonEncode({
+      'success': true,
+      'message': 'Médias mis à jour avec succès',
+      'parcel': updatedParcel
+    }));
+  } catch (e) {
+    print('❌ Erreur mise à jour médias (PATCH): $e');
+    return Response.internalServerError(
+      body: jsonEncode({'success': false, 'message': e.toString()})
+    );
+  }
+});
+
+// Version PUT pour compatibilité (optionnelle)
+router.put('/parcels/<parcelId>/media', (Request request, String parcelId) async {
+  final authCheck = await _authMiddleware(request);
+  if (authCheck != null) return authCheck;
+
+  final userId = JwtHelper.extractUserId(request)!;
+  print('🔑 Driver ID: $userId');
+  print('🔍 Mise à jour médias (PUT) pour parcels: $parcelId');
+
+  try {
+    final body = await request.readAsString();
+    final data = jsonDecode(body);
+    
+    final List<String> photoUrls = (data['photoUrls'] as List?)?.cast<String>() ?? [];
+    final List<String> videoUrls = (data['videoUrls'] as List?)?.cast<String>() ?? [];
+    
+    final db = await DatabaseService.getInstance();
+    
+    // Pour PUT, on remplace complètement les URLs
+    await db.connection.execute('''
+      UPDATE parcels 
+      SET photo_urls = \$3, video_urls = \$4, updated_at = NOW()
+      WHERE id = \$1 AND driver_id = \$2
+    ''', parameters: [
+      parcelId, 
+      userId, 
+      jsonEncode(photoUrls), 
+      jsonEncode(videoUrls)
+    ]);
+    
+    final updatedParcel = await _parcelService.getParcelById(parcelId);
+    
+    return Response.ok(jsonEncode({
+      'success': true,
+      'message': 'Médias mis à jour avec succès',
+      'parcel': updatedParcel
+    }));
+  } catch (e) {
+    print('❌ Erreur mise à jour médias (PUT): $e');
+    return Response.internalServerError(
+      body: jsonEncode({'success': false, 'message': e.toString()})
+    );
+  }
+});
+
     // Confirmer livraison
     router.put('/parcels/<parcelId>/deliver',
         (Request request, String parcelId) async {
