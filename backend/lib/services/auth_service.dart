@@ -48,6 +48,7 @@ class AuthService {
     }
 
     // Sinon, générer un UUID basé sur l'ID
+    // ignore: deprecated_member_use
     return _uuid.v5(Uuid.NAMESPACE_DNS, garageIdStr);
   }
 
@@ -321,39 +322,46 @@ class AuthService {
     return {'success': true, 'accessToken': token, 'user': user.toJson()};
   }
 
-  Future<Map<String, dynamic>> loginWithPin(String pin) async {
-    final db = await DatabaseService.getInstance();
+  Future<Map<String, dynamic>> loginWithPin(String pin, String identifier) async {
+  final db = await DatabaseService.getInstance();
 
-    try {
-      print('🔐 [PIN_LOGIN] Tentative de connexion avec PIN');
+  try {
+    print('🔐 [PIN_LOGIN] Tentative pour: $identifier avec PIN');
+    
+    // Chercher l'utilisateur par email OU téléphone ET par PIN
+    final result = await db.connection.execute('''
+      SELECT * FROM users 
+      WHERE (email = \$1 OR phone = \$1) 
+        AND pin = \$2 
+        AND status = 'active'
+    ''', parameters: [identifier, pin]);
 
-      final result = await db.connection.execute(
-        'SELECT * FROM users WHERE pin = \$1 AND status = \'active\'',
-        parameters: [pin],
-      );
-
-      if (result.isEmpty) {
-        print('❌ [PIN_LOGIN] PIN incorrect ou compte inactif');
-        return {'success': false, 'message': 'PIN incorrect ou compte inactif'};
-      }
-
-      final user = User.fromDatabaseRow(result.first);
-      final token = JwtHelper.generateToken(user.id);
-
-      // Mettre à jour last_login
-      await db.connection.execute(
-        'UPDATE users SET last_login = NOW() WHERE id = \$1',
-        parameters: [user.id],
-      );
-
-      print('✅ [PIN_LOGIN] Connexion réussie pour: ${user.email}');
-
-      return {'success': true, 'accessToken': token, 'user': user.toJson()};
-    } catch (e) {
-      print('❌ [PIN_LOGIN] Erreur: $e');
-      return {'success': false, 'message': e.toString()};
+    if (result.isEmpty) {
+      print('❌ [PIN_LOGIN] Identifiant ou PIN incorrect');
+      return {'success': false, 'message': 'Identifiant ou PIN incorrect'};
     }
+
+    final user = User.fromDatabaseRow(result.first);
+    final token = JwtHelper.generateToken(user.id);
+
+    // Mettre à jour last_login
+    await db.connection.execute(
+      'UPDATE users SET last_login = NOW() WHERE id = \$1',
+      parameters: [user.id],
+    );
+
+    print('✅ [PIN_LOGIN] Connexion réussie pour: ${user.email}');
+
+    return {
+      'success': true, 
+      'accessToken': token, 
+      'user': user.toJson()
+    };
+  } catch (e) {
+    print('❌ [PIN_LOGIN] Erreur: $e');
+    return {'success': false, 'message': e.toString()};
   }
+}
 
   Future<Map<String, dynamic>> getUserById(String userId) async {
     final db = await DatabaseService.getInstance();

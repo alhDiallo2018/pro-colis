@@ -5,6 +5,7 @@ import 'package:procolis_backend/services/database_service.dart';
 import 'package:procolis_backend/services/email_service.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../services/driver_service.dart';
 import '../services/parcel_service.dart';
@@ -381,107 +382,113 @@ class DriverRoutes {
     });
 
     // Mettre à jour les médias du colis (photos et vidéos) - Version PATCH
-    // Mettre à jour les médias du colis (photos et vidéos) - Version avec Set pour éliminer les doublons
-router.patch('/parcels/<parcelId>/media', (Request request, String parcelId) async {
-  final authCheck = await _authMiddleware(request);
-  if (authCheck != null) return authCheck;
+    router.patch('/parcels/<parcelId>/media',
+        (Request request, String parcelId) async {
+      final authCheck = await _authMiddleware(request);
+      if (authCheck != null) return authCheck;
 
-  final userId = JwtHelper.extractUserId(request)!;
-  print('🔑 Mise à jour médias pour parcels: $parcelId');
+      final userId = JwtHelper.extractUserId(request)!;
+      print('🔑 Mise à jour médias pour parcels: $parcelId');
 
-  try {
-    final body = await request.readAsString();
-    final data = jsonDecode(body);
-    
-    final List<String> newPhotoUrls = (data['photoUrls'] as List?)?.cast<String>() ?? [];
-    final List<String> newVideoUrls = (data['videoUrls'] as List?)?.cast<String>() ?? [];
-    
-    print('📸 Nouvelles photos reçues: $newPhotoUrls');
-    print('🎬 Nouvelles vidéos reçues: $newVideoUrls');
-    
-    final db = await DatabaseService.getInstance();
-    
-    // Récupérer les URLs existantes
-    final existingResult = await db.connection.execute('''
-      SELECT photo_urls, video_urls FROM parcels WHERE id = \$1 AND driver_id = \$2
-    ''', parameters: [parcelId, userId]);
-    
-    if (existingResult.isEmpty) {
-      return Response.notFound(
-        jsonEncode({'success': false, 'message': 'Colis non trouvé ou non autorisé'})
-      );
-    }
-    
-    final existingRow = existingResult.first;
-    
-    // Fonction pour convertir PostgreSQL ARRAY en List<String>
-    List<String> pgArrayToList(dynamic pgArray) {
-      if (pgArray == null) return [];
-      String str = pgArray.toString();
-      if (str.isEmpty || str == '{}') return [];
-      // Enlever les {} du début et de la fin
-      str = str.substring(1, str.length - 1);
-      if (str.isEmpty) return [];
-      // Split par les virgules et nettoyer
-      return str.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    }
-    
-    final List<String> existingPhotoUrls = pgArrayToList(existingRow[0]);
-    final List<String> existingVideoUrls = pgArrayToList(existingRow[1]);
-    
-    print('📸 Photos existantes: $existingPhotoUrls');
-    print('🎬 Vidéos existantes: $existingVideoUrls');
-    
-    // ✅ UTILISATION DE SET POUR ÉLIMINER LES DOUBLONS
-    final Set<String> allPhotoUrlsSet = {...existingPhotoUrls, ...newPhotoUrls};
-    final Set<String> allVideoUrlsSet = {...existingVideoUrls, ...newVideoUrls};
-    
-    final List<String> allPhotoUrls = allPhotoUrlsSet.toList();
-    final List<String> allVideoUrls = allVideoUrlsSet.toList();
-    
-    print('📸 Photos finales (sans doublons): $allPhotoUrls');
-    print('🎬 Vidéos finales (sans doublons): $allVideoUrls');
-    
-    // Fonction pour convertir List en PostgreSQL ARRAY
-    String listToPgArray(List<String> list) {
-      if (list.isEmpty) return '{}';
-      return '{${list.join(',')}}';
-    }
-    
-    final String pgPhotoUrls = listToPgArray(allPhotoUrls);
-    final String pgVideoUrls = listToPgArray(allVideoUrls);
-    
-    // Mettre à jour la base de données
-    await db.connection.execute('''
-      UPDATE parcels 
-      SET photo_urls = \$3::TEXT[], 
-          video_urls = \$4::TEXT[], 
-          updated_at = NOW()
-      WHERE id = \$1 AND driver_id = \$2
-    ''', parameters: [
-      parcelId, 
-      userId, 
-      pgPhotoUrls, 
-      pgVideoUrls
-    ]);
-    
-    print('✅ Médias mis à jour avec succès pour le colis $parcelId');
-    
-    // Récupérer le colis mis à jour
-    final updatedParcel = await _parcelService.getParcelById(parcelId);
-    
-    return Response.ok(jsonEncode({
-      'success': true,
-      'message': 'Médias mis à jour avec succès',
-      'parcel': updatedParcel
-    }));
-  } catch (e) {
-    print('❌ Erreur mise à jour médias: $e');
-    return Response.internalServerError(
-      body: jsonEncode({'success': false, 'message': e.toString()})
-    );
-  }
-});
+      try {
+        final body = await request.readAsString();
+        final data = jsonDecode(body);
+
+        final List<String> newPhotoUrls =
+            (data['photoUrls'] as List?)?.cast<String>() ?? [];
+        final List<String> newVideoUrls =
+            (data['videoUrls'] as List?)?.cast<String>() ?? [];
+
+        print('📸 Nouvelles photos reçues: $newPhotoUrls');
+        print('🎬 Nouvelles vidéos reçues: $newVideoUrls');
+
+        final db = await DatabaseService.getInstance();
+
+        // Récupérer les URLs existantes
+        final existingResult = await db.connection.execute('''
+          SELECT photo_urls, video_urls FROM parcels WHERE id = \$1 AND driver_id = \$2
+        ''', parameters: [parcelId, userId]);
+
+        if (existingResult.isEmpty) {
+          return Response.notFound(jsonEncode({
+            'success': false,
+            'message': 'Colis non trouvé ou non autorisé'
+          }));
+        }
+
+        final existingRow = existingResult.first;
+
+        // Fonction pour convertir PostgreSQL ARRAY en List<String>
+        List<String> pgArrayToList(dynamic pgArray) {
+          if (pgArray == null) return [];
+          String str = pgArray.toString();
+          if (str.isEmpty || str == '{}') return [];
+          str = str.substring(1, str.length - 1);
+          if (str.isEmpty) return [];
+          return str
+              .split(',')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList();
+        }
+
+        final List<String> existingPhotoUrls = pgArrayToList(existingRow[0]);
+        final List<String> existingVideoUrls = pgArrayToList(existingRow[1]);
+
+        print('📸 Photos existantes: $existingPhotoUrls');
+        print('🎬 Vidéos existantes: $existingVideoUrls');
+
+        // UTILISATION DE SET POUR ÉLIMINER LES DOUBLONS
+        final Set<String> allPhotoUrlsSet = {
+          ...existingPhotoUrls,
+          ...newPhotoUrls
+        };
+        final Set<String> allVideoUrlsSet = {
+          ...existingVideoUrls,
+          ...newVideoUrls
+        };
+
+        final List<String> allPhotoUrls = allPhotoUrlsSet.toList();
+        final List<String> allVideoUrls = allVideoUrlsSet.toList();
+
+        print('📸 Photos finales (sans doublons): $allPhotoUrls');
+        print('🎬 Vidéos finales (sans doublons): $allVideoUrls');
+
+        // Fonction pour convertir List en PostgreSQL ARRAY
+        String listToPgArray(List<String> list) {
+          if (list.isEmpty) return '{}';
+          return '{${list.join(',')}}';
+        }
+
+        final String pgPhotoUrls = listToPgArray(allPhotoUrls);
+        final String pgVideoUrls = listToPgArray(allVideoUrls);
+
+        // Mettre à jour la base de données
+        await db.connection.execute('''
+          UPDATE parcels 
+          SET photo_urls = \$3::TEXT[], 
+              video_urls = \$4::TEXT[], 
+              updated_at = NOW()
+          WHERE id = \$1 AND driver_id = \$2
+        ''', parameters: [parcelId, userId, pgPhotoUrls, pgVideoUrls]);
+
+        print('✅ Médias mis à jour avec succès pour le colis $parcelId');
+
+        // Récupérer le colis mis à jour
+        final updatedParcel = await _parcelService.getParcelById(parcelId);
+
+        return Response.ok(jsonEncode({
+          'success': true,
+          'message': 'Médias mis à jour avec succès',
+          'parcel': updatedParcel
+        }));
+      } catch (e) {
+        print('❌ Erreur mise à jour médias: $e');
+        return Response.internalServerError(
+            body: jsonEncode({'success': false, 'message': e.toString()}));
+      }
+    });
+
     // Confirmer livraison
     router.put('/parcels/<parcelId>/deliver',
         (Request request, String parcelId) async {
@@ -492,7 +499,8 @@ router.patch('/parcels/<parcelId>/media', (Request request, String parcelId) asy
       try {
         final body = await request.readAsString();
         final data = jsonDecode(body);
-        final result = await _parcelService.confirmDelivery(parcelId, userId, data);
+        final result =
+            await _parcelService.confirmDelivery(parcelId, userId, data);
         return Response.ok(jsonEncode({
           'success': true,
           'message': 'Livraison confirmée',
@@ -544,6 +552,242 @@ router.patch('/parcels/<parcelId>/media', (Request request, String parcelId) asy
         }));
       } catch (e) {
         print('❌ Erreur update status: $e');
+        return Response.internalServerError(
+            body: jsonEncode({'success': false, 'message': e.toString()}));
+      }
+    });
+
+    // ==================== ROUTES OFFRES (BIDS) ====================
+
+    // Faire une offre sur un colis en libre service
+    router.post('/bids', (Request request) async {
+      final authCheck = await _authMiddleware(request);
+      if (authCheck != null) return authCheck;
+
+      final driverId = JwtHelper.extractUserId(request)!;
+      print('💰 Driver $driverId fait une offre');
+
+      try {
+        final body = await request.readAsString();
+        final data = jsonDecode(body);
+
+        final parcelId = data['parcelId']?.toString();
+        final price = data['price'] is num
+            ? (data['price'] as num).toDouble()
+            : double.tryParse(data['price'].toString());
+        final message = data['message']?.toString();
+
+        if (parcelId == null || parcelId.isEmpty) {
+          return Response.badRequest(
+              body: jsonEncode(
+                  {'success': false, 'message': 'ID du colis requis'}));
+        }
+
+        if (price == null || price <= 0) {
+          return Response.badRequest(
+              body: jsonEncode(
+                  {'success': false, 'message': 'Prix valide requis'}));
+        }
+
+        final db = await DatabaseService.getInstance();
+
+        // Vérifier que le colis existe et est en libre service
+        // ✅ CORRECTION: enlever 'parameters:' et passer directement la liste
+        final parcelResult = await db.connection.execute('''
+      SELECT id, is_free_for_bidding, status, sender_id 
+      FROM parcels WHERE id = \$1
+    ''', parameters: [parcelId]);
+
+        if (parcelResult.isEmpty) {
+          // ✅ CORRECTION: Response.notFound prend un seul argument positionnel
+          return Response.notFound(
+              jsonEncode({'success': false, 'message': 'Colis non trouvé'}));
+        }
+
+        final parcelRow = parcelResult.first;
+        final isFreeForBidding = parcelRow[1] == true;
+        final status = parcelRow[2]?.toString();
+
+        if (!isFreeForBidding || status != 'free') {
+          return Response.badRequest(
+              body: jsonEncode({
+            'success': false,
+            'message': 'Ce colis n\'est pas en libre service'
+          }));
+        }
+
+        // Vérifier que le chauffeur n'a pas déjà fait une offre sur ce colis
+        const existingBidCheck = '''
+      SELECT id FROM bids 
+      WHERE parcel_id = \$1 AND driver_id = \$2
+    ''';
+        // ✅ CORRECTION: enlever 'parameters:'
+        final existingBid = await db.connection
+            .execute(existingBidCheck, parameters: [parcelId, driverId]);
+
+        if (existingBid.isNotEmpty) {
+          return Response.badRequest(
+              body: jsonEncode({
+            'success': false,
+            'message': 'Vous avez déjà fait une offre sur ce colis'
+          }));
+        }
+
+        // Récupérer les informations du chauffeur
+        // ✅ CORRECTION: enlever 'parameters:'
+        final driverResult = await db.connection.execute('''
+      SELECT full_name, phone FROM users WHERE id = \$1
+    ''', parameters: [driverId]);
+
+        final driverName =
+            driverResult.isNotEmpty ? driverResult.first[0]?.toString() : '';
+        final driverPhone =
+            driverResult.isNotEmpty ? driverResult.first[1]?.toString() : '';
+
+        // Créer l'offre
+        final bidId = const Uuid().v4();
+        final now = DateTime.now();
+
+        // ✅ CORRECTION: enlever 'parameters:'
+        await db.connection.execute('''
+      INSERT INTO bids (
+        id, parcel_id, driver_id, driver_name, driver_phone, 
+        price, message, status, created_at
+      ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9)
+    ''', parameters: [
+          bidId,
+          parcelId,
+          driverId,
+          driverName,
+          driverPhone,
+          price,
+          message,
+          'pending',
+          now
+        ]);
+
+        // Créer un événement pour le colis
+        // ✅ CORRECTION: enlever 'parameters:'
+        await db.connection.execute('''
+      INSERT INTO parcel_events (
+        id, parcel_id, status, description, user_id, user_name, user_role, created_at
+      ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8)
+    ''', parameters: [
+          const Uuid().v4(),
+          parcelId,
+          'free',
+          'Nouvelle offre reçue pour ce colis',
+          driverId,
+          driverName,
+          'driver',
+          now
+        ]);
+
+        print('✅ Offre créée avec succès: $bidId');
+
+        return Response.ok(jsonEncode({
+          'success': true,
+          'message': 'Offre envoyée avec succès',
+          'bid': {
+            'id': bidId,
+            'parcelId': parcelId,
+            'driverId': driverId,
+            'driverName': driverName,
+            'driverPhone': driverPhone,
+            'price': price,
+            'message': message,
+            'status': 'pending',
+            'createdAt': now.toIso8601String(),
+          }
+        }));
+      } catch (e) {
+        print('❌ Erreur création offre: $e');
+        return Response.internalServerError(
+            body: jsonEncode({'success': false, 'message': e.toString()}));
+      }
+    });
+
+    // Récupérer les offres du chauffeur
+    router.get('/bids', (Request request) async {
+      final authCheck = await _authMiddleware(request);
+      if (authCheck != null) return authCheck;
+
+      final driverId = JwtHelper.extractUserId(request)!;
+
+      try {
+        final db = await DatabaseService.getInstance();
+
+        final result = await db.connection.execute('''
+          SELECT 
+            b.id, b.parcel_id, b.price, b.message, b.status, b.created_at, b.responded_at,
+            p.tracking_number, p.description, p.departure_garage_name, p.arrival_garage_name,
+            p.sender_name, p.receiver_name
+          FROM bids b
+          JOIN parcels p ON b.parcel_id = p.id
+          WHERE b.driver_id = \$1
+          ORDER BY b.created_at DESC
+        ''', parameters: [driverId]);
+
+        final bids = result
+            .map((row) => {
+                  'id': row[0]?.toString(),
+                  'parcelId': row[1]?.toString(),
+                  'price': row[2],
+                  'message': row[3]?.toString(),
+                  'status': row[4]?.toString(),
+                  'createdAt': row[5]?.toString(),
+                  'respondedAt': row[6]?.toString(),
+                  'parcel': {
+                    'trackingNumber': row[7]?.toString(),
+                    'description': row[8]?.toString(),
+                    'departureGarageName': row[9]?.toString(),
+                    'arrivalGarageName': row[10]?.toString(),
+                    'senderName': row[11]?.toString(),
+                    'receiverName': row[12]?.toString(),
+                  }
+                })
+            .toList();
+
+        return Response.ok(
+            jsonEncode({'success': true, 'bids': bids, 'count': bids.length}));
+      } catch (e) {
+        print('❌ Erreur récupération offres: $e');
+        return Response.internalServerError(
+            body: jsonEncode({'success': false, 'message': e.toString()}));
+      }
+    });
+
+    // Annuler une offre du chauffeur
+    router.delete('/bids/<bidId>', (Request request, String bidId) async {
+      final authCheck = await _authMiddleware(request);
+      if (authCheck != null) return authCheck;
+
+      final driverId = JwtHelper.extractUserId(request)!;
+
+      try {
+        final db = await DatabaseService.getInstance();
+
+        // Vérifier que l'offre appartient au chauffeur
+        final checkResult = await db.connection.execute('''
+          SELECT id FROM bids WHERE id = \$1 AND driver_id = \$2 AND status = 'pending'
+        ''', parameters: [bidId, driverId]);
+
+        if (checkResult.isEmpty) {
+          return Response.badRequest(
+              body: jsonEncode({
+            'success': false,
+            'message': 'Offre non trouvable ou déjà traitée'
+          }));
+        }
+
+        // Supprimer l'offre
+        await db.connection
+            .execute('DELETE FROM bids WHERE id = \$1', parameters: [bidId]);
+
+        return Response.ok(jsonEncode(
+            {'success': true, 'message': 'Offre annulée avec succès'}));
+      } catch (e) {
+        print('❌ Erreur annulation offre: $e');
         return Response.internalServerError(
             body: jsonEncode({'success': false, 'message': e.toString()}));
       }

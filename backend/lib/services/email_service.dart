@@ -681,7 +681,7 @@ class EmailService {
 
   /// Envoie un code OTP
   Future<bool> sendOtpCode(String to, String code, {String type = 'connexion'}) async {
-    _log.info('🔐 Envoi du code OTP à $to');
+    _log.info('🔐 Envoi du code OTP $code à $to');
     
     final subject = '🔐 PRO COLIS - Code de vérification';
     

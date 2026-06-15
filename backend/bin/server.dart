@@ -71,8 +71,8 @@ void main() async {
     final smtpHost = Platform.environment['SMTP_HOST'] ?? 'smtp.gmail.com';
     final smtpPort = int.parse(Platform.environment['SMTP_PORT'] ?? '587');
     final smtpSecure = Platform.environment['SMTP_SECURE'] == 'true';
-    final smtpUser = Platform.environment['SMTP_USER'] ?? '';
-    final smtpPass = Platform.environment['SMTP_PASS'] ?? '';
+    final smtpUser = Platform.environment['SMTP_USER'] ?? 'alhassanegarki2018@gmail.com';
+    final smtpPass = Platform.environment['SMTP_PASS'] ?? 'izjbxackbgpdtmam';
     final smtpFrom = Platform.environment['SMTP_FROM'] ?? 'PRO COLIS <noreply@proscolis.sn>';
     
     if (smtpUser.isEmpty || smtpPass.isEmpty) {

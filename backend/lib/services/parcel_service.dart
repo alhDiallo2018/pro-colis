@@ -1,4 +1,7 @@
 // backend/lib/services/parcel_service.dart
+
+// ignore_for_file: unused_local_variable
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -28,6 +31,8 @@ class ParcelService {
     switch (status) {
       case 'pending':
         return 'Colis créé';
+      case 'free':
+        return 'Colis mis en libre service';
       case 'confirmed':
         return 'Colis confirmé';
       case 'picked_up':
@@ -51,6 +56,8 @@ class ParcelService {
     switch (status) {
       case 'pending':
         return 'En attente';
+      case 'free':
+        return '🔓 Libre service';
       case 'confirmed':
         return 'Confirmé';
       case 'picked_up':
@@ -158,7 +165,7 @@ Merci d'avoir choisi PRO COLIS !
   }
 
   // ==================== VÉRIFICATION DES COLONNES ====================
-
+  // ignore: unused_element
   Future<Map<String, bool>> _checkColumns() async {
     final db = await DatabaseService.getInstance();
     final columns = {
@@ -167,6 +174,7 @@ Merci d'avoir choisi PRO COLIS !
       'urgent_fee': false,
       'insurance_amount': false,
       'video_urls': false,
+      'audio_urls': false,  // ✅ AJOUTÉ
       'estimated_delivery_date': false,
       'cancelled_by': false,
       'cancellation_reason': false,
@@ -176,6 +184,10 @@ Merci d'avoir choisi PRO COLIS !
       'width': false,
       'height': false,
       'payment_phone_number': false,
+      'is_free_for_bidding': false,
+      'proposed_price': false,
+      'negotiated_price': false,
+      'selected_bid_id': false,
     };
 
     try {
@@ -201,223 +213,266 @@ Merci d'avoir choisi PRO COLIS !
   // ==================== CRÉATION ====================
 
   Future<Map<String, dynamic>> createParcel(
-    String userId, Map<String, dynamic> data) async {
-  final db = await DatabaseService.getInstance();
-  final parcelId = _uuid.v4();
-  final trackingNumber = _generateTrackingNumber();
+      String userId, Map<String, dynamic> data) async {
+    final db = await DatabaseService.getInstance();
+    final parcelId = _uuid.v4();
+    final trackingNumber = _generateTrackingNumber();
 
-  print('📝 Insertion colis:');
-  print('  - trackingNumber: $trackingNumber');
-  print('  - price: ${data['price']}');
-  print('  - totalAmount: ${data['totalAmount']}');
+    print('📝 Insertion colis:');
+    print('  - trackingNumber: $trackingNumber');
+    print('  - price: ${data['price']}');
+    print('  - totalAmount: ${data['totalAmount']}');
 
-  // Récupérer les infos de l'utilisateur
-  final userResult = await db.connection.execute(
-    'SELECT full_name, phone, email, role FROM users WHERE id = \$1',
-    parameters: [userId],
-  );
-
-  final currentUserName = userResult.first[0].toString();
-  final currentUserPhone = userResult.first[1].toString();
-  final userRole = userResult.first[3].toString();
-  final isDriver = userRole == 'driver';
-  final initialStatus = isDriver ? 'confirmed' : 'pending';
-
-  // Auto-assignation du chauffeur
-  final driverId = isDriver ? userId : data['driverId']?.toString();
-  final driverName = isDriver ? currentUserName : data['driverName']?.toString();
-  final driverPhone = isDriver ? currentUserPhone : data['driverPhone']?.toString();
-
-  // Données
-  final senderName = data['senderName']?.toString();
-  final senderPhone = data['senderPhone']?.toString();
-  final senderEmail = data['senderEmail']?.toString();
-  final String? senderId = data['senderId'] != null && data['senderId'].toString().isNotEmpty
-      ? data['senderId'].toString()
-      : null;
-
-  final receiverName = data['receiverName']?.toString();
-  final receiverPhone = data['receiverPhone']?.toString();
-  final receiverEmail = data['receiverEmail']?.toString();
-  final receiverAddress = data['receiverAddress']?.toString();
-
-  final arrivalGarageId = data['arrivalGarageId']?.toString();
-  final arrivalGarageName = data['arrivalGarageName']?.toString();
-  final notes = data['notes']?.toString();
-  final pickupDate = data['pickupDate']?.toString();
-  final estimatedDeliveryDate = data['estimatedDeliveryDate']?.toString();
-
-  // Médias - Convertir en format PostgreSQL ARRAY
-  final List<String> photoUrls = data['photoUrls'] != null
-      ? List<String>.from(data['photoUrls'])
-      : [];
-  final List<String> videoUrls = data['videoUrls'] != null
-      ? List<String>.from(data['videoUrls'])
-      : [];
-
-  // Fonction pour convertir List en PostgreSQL ARRAY
-  String listToPgArray(List<String> list) {
-    if (list.isEmpty) return '{}';
-    // Échapper les guillemets dans les URLs
-    final escaped = list.map((url) => url.replaceAll('"', '\\"')).toList();
-    return '{${escaped.join(',')}}';
-  }
-
-  final String photoUrlsPg = listToPgArray(photoUrls);
-  final String videoUrlsPg = listToPgArray(videoUrls);
-
-  print('📸 Photos reçues: $photoUrls');
-  print('🎬 Vidéos reçues: $videoUrls');
-  print('📸 Photos PG: $photoUrlsPg');
-  print('🎬 Vidéos PG: $videoUrlsPg');
-
-  // Options
-  final isInsured = data['isInsured'] == true;
-  final isUrgent = data['isUrgent'] == true;
-  final price = data['price'] != null ? (data['price'] as num).toDouble() : 0;
-  final deliveryFees = data['deliveryFees'] != null ? (data['deliveryFees'] as num).toDouble() : 0;
-  final totalAmount = data['totalAmount'] != null
-      ? (data['totalAmount'] as num).toDouble()
-      : price + deliveryFees;
-
-  final paymentMethod = data['paymentMethod']?.toString();
-  final paymentPhoneNumber = data['paymentPhoneNumber']?.toString();
-  final paymentStatus = 'pending';
-
-  // Construction de la requête
-  final columns = <String>[];
-  final values = <dynamic>[];
-
-  // Colonnes de base
-  final baseColumns = {
-    'id': parcelId,
-    'tracking_number': trackingNumber,
-    'sender_id': senderId,
-    'sender_name': senderName,
-    'sender_phone': senderPhone,
-    'sender_email': senderEmail,
-    'receiver_name': receiverName,
-    'receiver_phone': receiverPhone,
-    'receiver_email': receiverEmail,
-    'receiver_address': receiverAddress,
-    'description': data['description']?.toString() ?? '',
-    'weight': (data['weight'] as num).toDouble(),
-    'type': data['type']?.toString() ?? 'package',
-    'status': initialStatus,
-    'departure_garage_id': data['departureGarageId']?.toString(),
-    'departure_garage_name': data['departureGarageName']?.toString(),
-    'arrival_garage_id': arrivalGarageId,
-    'arrival_garage_name': arrivalGarageName,
-    'driver_id': driverId,
-    'driver_name': driverName,
-    'driver_phone': driverPhone,
-    'price': price,
-    'is_urgent': isUrgent,
-    'is_insured': isInsured,
-    'payment_method': paymentMethod,
-    'payment_status': paymentStatus,
-    'photo_urls': photoUrlsPg,
-    'created_by': userId,
-    'created_at': DateTime.now(),
-    'updated_at': DateTime.now(),
-  };
-
-  for (final entry in baseColumns.entries) {
-    columns.add(entry.key);
-    values.add(entry.value);
-  }
-
-  // Ajouter video_urls
-  columns.add('video_urls');
-  values.add(videoUrlsPg);
-  print('📹 Ajout de video_urls: $videoUrlsPg');
-
-  // Colonnes optionnelles
-  if (notes != null && notes.isNotEmpty) {
-    columns.add('notes');
-    values.add(notes);
-  }
-  if (pickupDate != null) {
-    columns.add('pickup_date');
-    values.add(DateTime.tryParse(pickupDate));
-  }
-  if (estimatedDeliveryDate != null) {
-    columns.add('estimated_delivery_date');
-    values.add(DateTime.tryParse(estimatedDeliveryDate));
-  }
-  if (paymentPhoneNumber != null && paymentPhoneNumber.isNotEmpty) {
-    columns.add('payment_phone_number');
-    values.add(paymentPhoneNumber);
-  }
-  if (totalAmount != null) {
-    columns.add('total_amount');
-    values.add(totalAmount);
-  }
-  if (deliveryFees != null) {
-    columns.add('delivery_fees');
-    values.add(deliveryFees);
-  }
-
-  final placeholders = List.generate(values.length, (i) => '\$${i + 1}').join(', ');
-  final sql = 'INSERT INTO parcels (${columns.join(', ')}) VALUES ($placeholders)';
-
-  print('📝 SQL: $sql');
-  print('📝 Nombre de valeurs: ${values.length}');
-
-  try {
-    await db.connection.execute(sql, parameters: values);
-    print('✅ Insertion réussie');
-
-    // Événement de création
-    await createParcelEvent(
-      parcelId,
-      initialStatus,
-      'Colis créé par $currentUserName',
-      userId: userId,
-      userName: currentUserName,
-      metadata: {
-        'type': 'creation',
-        'weight': data['weight'],
-        'trackingNumber': trackingNumber,
-        'clientName': senderName,
-        'totalAmount': totalAmount,
-        'photoCount': photoUrls.length,
-        'videoCount': videoUrls.length,
-      },
+    // Récupérer les infos de l'utilisateur
+    final userResult = await db.connection.execute(
+      'SELECT full_name, phone, email, role FROM users WHERE id = \$1',
+      parameters: [userId],
     );
 
-    // Événement de confirmation pour les chauffeurs
-    if (isDriver) {
+    final currentUserName = userResult.first[0].toString();
+    final currentUserPhone = userResult.first[1].toString();
+    final userRole = userResult.first[3].toString();
+    final isDriver = userRole == 'driver';
+
+    // Vérifier si le colis est en libre service
+    final isFreeForBidding = data['isFreeForBidding'] == true;
+    final proposedPrice = isFreeForBidding
+        ? (data['proposedPrice'] != null
+            ? (data['proposedPrice'] as num).toDouble()
+            : null)
+        : null;
+
+    // Statut initial
+    String initialStatus;
+    if (isFreeForBidding) {
+      initialStatus = 'free';
+    } else if (isDriver) {
+      initialStatus = 'confirmed';
+    } else {
+      initialStatus = 'pending';
+    }
+
+    // Auto-assignation du chauffeur
+    final driverId = isDriver ? userId : data['driverId']?.toString();
+    final driverName =
+        isDriver ? currentUserName : data['driverName']?.toString();
+    final driverPhone =
+        isDriver ? currentUserPhone : data['driverPhone']?.toString();
+
+    // Données
+    final senderName = data['senderName']?.toString();
+    final senderPhone = data['senderPhone']?.toString();
+    final senderEmail = data['senderEmail']?.toString();
+    final String? senderId =
+        data['senderId'] != null && data['senderId'].toString().isNotEmpty
+            ? data['senderId'].toString()
+            : null;
+
+    final receiverName = data['receiverName']?.toString();
+    final receiverPhone = data['receiverPhone']?.toString();
+    final receiverEmail = data['receiverEmail']?.toString();
+    final receiverAddress = data['receiverAddress']?.toString();
+
+    final arrivalGarageId = data['arrivalGarageId']?.toString();
+    final arrivalGarageName = data['arrivalGarageName']?.toString();
+    final notes = data['notes']?.toString();
+    final pickupDate = data['pickupDate']?.toString();
+    final estimatedDeliveryDate = data['estimatedDeliveryDate']?.toString();
+
+    // Médias
+    final List<String> photoUrls =
+        data['photoUrls'] != null ? List<String>.from(data['photoUrls']) : [];
+    final List<String> videoUrls =
+        data['videoUrls'] != null ? List<String>.from(data['videoUrls']) : [];
+    final List<String> audioUrls =
+        data['audioUrls'] != null ? List<String>.from(data['audioUrls']) : [];  // ✅ AJOUTÉ
+
+    String listToPgArray(List<String> list) {
+      if (list.isEmpty) return '{}';
+      final escaped = list.map((url) => url.replaceAll('"', '\\"')).toList();
+      return '{${escaped.join(',')}}';
+    }
+
+    final String photoUrlsPg = listToPgArray(photoUrls);
+    final String videoUrlsPg = listToPgArray(videoUrls);
+    final String audioUrlsPg = listToPgArray(audioUrls);  // ✅ AJOUTÉ
+
+    print('📸 Photos reçues: $photoUrls');
+    print('🎬 Vidéos reçues: $videoUrls');
+    print('🎤 Audios reçus: $audioUrls');  // ✅ AJOUTÉ
+    print('🔓 Libre service: $isFreeForBidding');
+    if (isFreeForBidding) {
+      print('💰 Prix suggéré: $proposedPrice');
+    }
+
+    final isInsured = data['isInsured'] == true;
+    final isUrgent = data['isUrgent'] == true;
+    final price = data['price'] != null ? (data['price'] as num).toDouble() : 0;
+    final deliveryFees = data['deliveryFees'] != null
+        ? (data['deliveryFees'] as num).toDouble()
+        : 0;
+    final totalAmount = data['totalAmount'] != null
+        ? (data['totalAmount'] as num).toDouble()
+        : price + deliveryFees;
+
+    final paymentMethod = data['paymentMethod']?.toString();
+    final paymentPhoneNumber = data['paymentPhoneNumber']?.toString();
+    final paymentStatus = 'pending';
+
+    final columns = <String>[];
+    final values = <dynamic>[];
+
+    final baseColumns = {
+      'id': parcelId,
+      'tracking_number': trackingNumber,
+      'sender_id': senderId,
+      'sender_name': senderName,
+      'sender_phone': senderPhone,
+      'sender_email': senderEmail,
+      'receiver_name': receiverName,
+      'receiver_phone': receiverPhone,
+      'receiver_email': receiverEmail,
+      'receiver_address': receiverAddress,
+      'description': data['description']?.toString() ?? '',
+      'weight': (data['weight'] as num).toDouble(),
+      'type': data['type']?.toString() ?? 'package',
+      'status': initialStatus,
+      'departure_garage_id': data['departureGarageId']?.toString(),
+      'departure_garage_name': data['departureGarageName']?.toString(),
+      'arrival_garage_id': arrivalGarageId,
+      'arrival_garage_name': arrivalGarageName,
+      'driver_id': driverId,
+      'driver_name': driverName,
+      'driver_phone': driverPhone,
+      'price': price,
+      'is_urgent': isUrgent,
+      'is_insured': isInsured,
+      'payment_method': paymentMethod,
+      'payment_status': paymentStatus,
+      'photo_urls': photoUrlsPg,
+      'created_by': userId,
+      'created_at': DateTime.now(),
+      'updated_at': DateTime.now(),
+    };
+
+    for (final entry in baseColumns.entries) {
+      columns.add(entry.key);
+      values.add(entry.value);
+    }
+
+    columns.add('video_urls');
+    values.add(videoUrlsPg);
+
+    columns.add('audio_urls');  // ✅ AJOUTÉ
+    values.add(audioUrlsPg);     // ✅ AJOUTÉ
+
+    columns.add('is_free_for_bidding');
+    values.add(isFreeForBidding);
+
+    if (proposedPrice != null) {
+      columns.add('proposed_price');
+      values.add(proposedPrice);
+    }
+
+    if (notes != null && notes.isNotEmpty) {
+      columns.add('notes');
+      values.add(notes);
+    }
+    if (pickupDate != null) {
+      columns.add('pickup_date');
+      values.add(DateTime.tryParse(pickupDate));
+    }
+    if (estimatedDeliveryDate != null) {
+      columns.add('estimated_delivery_date');
+      values.add(DateTime.tryParse(estimatedDeliveryDate));
+    }
+    if (paymentPhoneNumber != null && paymentPhoneNumber.isNotEmpty) {
+      columns.add('payment_phone_number');
+      values.add(paymentPhoneNumber);
+    }
+    columns.add('total_amount');
+    values.add(totalAmount);
+    columns.add('delivery_fees');
+    values.add(deliveryFees);
+
+    final placeholders =
+        List.generate(values.length, (i) => '\$${i + 1}').join(', ');
+    final sql =
+        'INSERT INTO parcels (${columns.join(', ')}) VALUES ($placeholders)';
+
+    print('📝 SQL: $sql');
+    print('📝 Nombre de valeurs: ${values.length}');
+
+    try {
+      await db.connection.execute(sql, parameters: values);
+      print('✅ Insertion réussie');
+
       await createParcelEvent(
         parcelId,
-        'confirmed',
-        'Colis confirmé et prêt pour le transport',
+        initialStatus,
+        'Colis créé par $currentUserName',
         userId: userId,
         userName: currentUserName,
         metadata: {
-          'type': 'confirmation',
-          'driverId': driverId,
-          'driverName': driverName,
+          'type': 'creation',
+          'weight': data['weight'],
+          'trackingNumber': trackingNumber,
+          'clientName': senderName,
+          'totalAmount': totalAmount,
+          'photoCount': photoUrls.length,
+          'videoCount': videoUrls.length,
+          'audioCount': audioUrls.length,  // ✅ AJOUTÉ
+          'isFreeForBidding': isFreeForBidding,
+          if (proposedPrice != null) 'proposedPrice': proposedPrice,
         },
       );
-    }
 
-    return {
-      'success': true,
-      'id': parcelId,
-      'trackingNumber': trackingNumber,
-      'status': initialStatus,
-      'createdAt': DateTime.now().toIso8601String(),
-      'driverId': driverId,
-      'driverName': driverName,
-      'senderName': senderName,
-      'totalAmount': totalAmount,
-    };
-  } catch (e) {
-    print('❌ Erreur insertion colis: $e');
-    return {'success': false, 'error': e.toString()};
+      if (isDriver && !isFreeForBidding) {
+        await createParcelEvent(
+          parcelId,
+          'confirmed',
+          'Colis confirmé et prêt pour le transport',
+          userId: userId,
+          userName: currentUserName,
+          metadata: {
+            'type': 'confirmation',
+            'driverId': driverId,
+            'driverName': driverName,
+          },
+        );
+      }
+
+      if (isFreeForBidding) {
+        await createParcelEvent(
+          parcelId,
+          'free',
+          'Colis mis en libre service - Les chauffeurs peuvent faire des offres',
+          userId: userId,
+          userName: currentUserName,
+          metadata: {
+            'type': 'free_bidding',
+            'proposedPrice': proposedPrice,
+          },
+        );
+      }
+
+      return {
+        'success': true,
+        'id': parcelId,
+        'trackingNumber': trackingNumber,
+        'status': initialStatus,
+        'createdAt': DateTime.now().toIso8601String(),
+        'driverId': driverId,
+        'driverName': driverName,
+        'senderName': senderName,
+        'totalAmount': totalAmount,
+        'isFreeForBidding': isFreeForBidding,
+      };
+    } catch (e) {
+      print('❌ Erreur insertion colis: $e');
+      return {'success': false, 'error': e.toString()};
+    }
   }
-}
 
   // ==================== LECTURE ====================
 
@@ -485,6 +540,90 @@ Merci d'avoir choisi PRO COLIS !
     }
   }
 
+  // Récupérer les colis en libre service
+  Future<List<Map<String, dynamic>>> getFreeParcels() async {
+    final db = await DatabaseService.getInstance();
+
+    try {
+      final parcelsResult = await db.connection.execute('''
+      SELECT 
+        id, tracking_number, sender_name, sender_phone,
+        receiver_name, receiver_phone,
+        description, weight, type, status,
+        price, proposed_price, total_amount,
+        departure_garage_name, arrival_garage_name,
+        created_at, notes
+      FROM parcels
+      WHERE is_free_for_bidding = true 
+      AND status = 'free'
+      AND driver_id IS NULL
+      ORDER BY created_at DESC
+    ''');
+
+      final parcels = <Map<String, dynamic>>[];
+
+      for (final row in parcelsResult) {
+        final parcelId = row[0].toString();
+
+        final bidsResult = await db.connection.execute('''
+        SELECT 
+          id, driver_id, driver_name, driver_phone, 
+          price, message, status, created_at, responded_at, response_message
+        FROM bids 
+        WHERE parcel_id = \$1
+        ORDER BY price DESC, created_at ASC
+      ''', parameters: [parcelId]);
+
+        final bids = bidsResult
+            .map((bidRow) => {
+                  'id': bidRow[0].toString(),
+                  'driverId': bidRow[1].toString(),
+                  'driverName': bidRow[2].toString(),
+                  'driverPhone': bidRow[3].toString(),
+                  'price': double.tryParse(bidRow[4].toString()) ?? 0,
+                  'message': bidRow[5]?.toString(),
+                  'status': bidRow[6]?.toString() ?? 'pending',
+                  'createdAt': (bidRow[7] as DateTime).toIso8601String(),
+                  'respondedAt': bidRow[8] != null
+                      ? (bidRow[8] as DateTime).toIso8601String()
+                      : null,
+                  'responseMessage': bidRow[9]?.toString(),
+                })
+            .toList();
+
+        print('📦 Parcel $parcelId: ${bids.length} bids found');
+
+        parcels.add({
+          'id': parcelId,
+          'trackingNumber': row[1].toString(),
+          'senderName': row[2].toString(),
+          'senderPhone': row[3].toString(),
+          'receiverName': row[4].toString(),
+          'receiverPhone': row[5].toString(),
+          'description': row[6].toString(),
+          'weight': double.tryParse(row[7].toString()) ?? 0,
+          'type': row[8].toString(),
+          'status': row[9].toString(),
+          'price': double.tryParse(row[10].toString()) ?? 0,
+          'proposedPrice':
+              row[11] != null ? double.tryParse(row[11].toString()) : null,
+          'totalAmount': double.tryParse(row[12].toString()) ?? 0,
+          'departureGarageName': row[13].toString(),
+          'arrivalGarageName': row[14]?.toString(),
+          'createdAt': (row[15] as DateTime).toIso8601String(),
+          'notes': row[16]?.toString(),
+          'bids': bids,
+        });
+      }
+
+      print('✅ ${parcels.length} free parcels loaded with bids');
+      return parcels;
+    } catch (e) {
+      print('❌ Erreur getFreeParcels: $e');
+      return [];
+    }
+  }
+
   Future<Map<String, dynamic>?> getParcelById(String parcelId) async {
     final db = await DatabaseService.getInstance();
 
@@ -501,10 +640,11 @@ Merci d'avoir choisi PRO COLIS !
           price, is_urgent, is_insured,
           payment_method, payment_phone_number, payment_status,
           total_amount, delivery_fees,
-          photo_urls, video_urls, signature_url,
+          photo_urls, video_urls, audio_urls, signature_url,
           notes, pickup_date, delivery_date, estimated_delivery_date,
           created_by, created_at, updated_at,
-          cancelled_by, cancellation_reason, cancelled_at
+          cancelled_by, cancellation_reason, cancelled_at,
+          is_free_for_bidding, proposed_price, negotiated_price, selected_bid_id
         FROM parcels WHERE id = \$1
       ''', parameters: [parcelId]);
 
@@ -533,13 +673,15 @@ Merci d'avoir choisi PRO COLIS !
         if (value is String && value.isNotEmpty && value != '[]') {
           try {
             final decoded = jsonDecode(value);
-            if (decoded is List) return decoded.map((e) => e.toString()).toList();
+            if (decoded is List)
+              return decoded.map((e) => e.toString()).toList();
           } catch (e) {}
         }
         return [];
       }
 
       final events = await getParcelEvents(parcelId);
+      final bids = await getParcelBids(parcelId);
 
       return {
         'id': row[0],
@@ -576,24 +718,426 @@ Merci d'avoir choisi PRO COLIS !
         'deliveryFees': toDouble(row[31]),
         'photoUrls': toList(row[32]),
         'videoUrls': toList(row[33]),
-        'signatureUrl': row[34],
-        'notes': row[35],
-        'pickupDate': row[36] != null ? (row[36] as DateTime).toIso8601String() : null,
-        'deliveryDate': row[37] != null ? (row[37] as DateTime).toIso8601String() : null,
-        'estimatedDeliveryDate': row[38] != null ? (row[38] as DateTime).toIso8601String() : null,
-        'createdBy': row[39],
-        'createdAt': (row[40] as DateTime).toIso8601String(),
-        'updatedAt': row[41] != null ? (row[41] as DateTime).toIso8601String() : null,
-        'cancelledBy': row[42],
-        'cancellationReason': row[43],
-        'cancelledAt': row[44] != null ? (row[44] as DateTime).toIso8601String() : null,
+        'audioUrls': toList(row[34]),  // ✅ AJOUTÉ
+        'signatureUrl': row[35],
+        'notes': row[36],
+        'pickupDate':
+            row[37] != null ? (row[37] as DateTime).toIso8601String() : null,
+        'deliveryDate':
+            row[38] != null ? (row[38] as DateTime).toIso8601String() : null,
+        'estimatedDeliveryDate':
+            row[39] != null ? (row[39] as DateTime).toIso8601String() : null,
+        'createdBy': row[40],
+        'createdAt': (row[41] as DateTime).toIso8601String(),
+        'updatedAt':
+            row[42] != null ? (row[42] as DateTime).toIso8601String() : null,
+        'cancelledBy': row[43],
+        'cancellationReason': row[44],
+        'cancelledAt':
+            row[45] != null ? (row[45] as DateTime).toIso8601String() : null,
+        'isFreeForBidding': toBool(row[46]),
+        'proposedPrice': toDouble(row[47]),
+        'negotiatedPrice': toDouble(row[48]),
+        'selectedBidId': row[49],
         'events': events,
+        'bids': bids,
       };
     } catch (e) {
       print('❌ Erreur getParcelById: $e');
       return null;
     }
   }
+
+  // ==================== MARCHANDAGE (LIBRE SERVICE) ====================
+
+  Future<Map<String, dynamic>> createBid(
+    String parcelId,
+    String driverId,
+    double price, {
+    String? message,
+  }) async {
+    final db = await DatabaseService.getInstance();
+    final bidId = _uuid.v4();
+
+    try {
+      final parcel = await getParcelById(parcelId);
+      if (parcel == null) {
+        return {'success': false, 'message': 'Colis non trouvé'};
+      }
+      if (parcel['status'] != 'free') {
+        return {
+          'success': false,
+          'message': 'Ce colis n\'est pas en libre service'
+        };
+      }
+      if (parcel['isFreeForBidding'] != true) {
+        return {
+          'success': false,
+          'message': 'Ce colis n\'accepte pas les offres'
+        };
+      }
+
+      final driverResult = await db.connection.execute(
+        'SELECT full_name, phone FROM users WHERE id = \$1',
+        parameters: [driverId],
+      );
+      if (driverResult.isEmpty) {
+        return {'success': false, 'message': 'Chauffeur non trouvé'};
+      }
+      final driverName = driverResult.first[0].toString();
+      final driverPhone = driverResult.first[1].toString();
+
+      await db.connection.execute('''
+        INSERT INTO bids (id, parcel_id, driver_id, driver_name, driver_phone, price, message, status, created_at)
+        VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, 'pending', \$8)
+      ''', parameters: [
+        bidId,
+        parcelId,
+        driverId,
+        driverName,
+        driverPhone,
+        price.toString(),
+        message,
+        DateTime.now()
+      ]);
+
+      await createParcelEvent(
+        parcelId,
+        'free',
+        'Nouvelle offre reçue: ${price.toStringAsFixed(0)} FCFA par $driverName',
+        userId: driverId,
+        userName: driverName,
+        metadata: {
+          'type': 'bid_created',
+          'bidId': bidId,
+          'price': price,
+          'driverId': driverId,
+          'driverName': driverName,
+        },
+      );
+
+      return {
+        'success': true,
+        'bidId': bidId,
+        'message': 'Offre envoyée avec succès',
+      };
+    } catch (e) {
+      print('❌ Erreur createBid: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getParcelBids(String parcelId) async {
+    final db = await DatabaseService.getInstance();
+
+    try {
+      final result = await db.connection.execute('''
+        SELECT 
+          id, driver_id, driver_name, driver_phone, price, message, status, created_at, responded_at, response_message
+        FROM bids 
+        WHERE parcel_id = \$1
+        ORDER BY price DESC, created_at ASC
+      ''', parameters: [parcelId]);
+
+      return result
+          .map((row) => ({
+                'id': row[0],
+                'driverId': row[1],
+                'driverName': row[2],
+                'driverPhone': row[3],
+                'price': double.tryParse(row[4].toString()) ?? 0,
+                'message': row[5],
+                'status': row[6],
+                'createdAt': (row[7] as DateTime).toIso8601String(),
+                'respondedAt': row[8] != null
+                    ? (row[8] as DateTime).toIso8601String()
+                    : null,
+                'responseMessage': row[9],
+              }))
+          .toList();
+    } catch (e) {
+      print('❌ Erreur getParcelBids: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> acceptBid(String bidId, String clientId) async {
+    final db = await DatabaseService.getInstance();
+
+    try {
+      print('🔍 acceptBid - bidId: $bidId, clientId: $clientId');
+
+      final bidResult = await db.connection.execute('''
+      SELECT 
+        b.id, 
+        b.parcel_id, 
+        b.driver_id, 
+        b.driver_name, 
+        b.driver_phone, 
+        b.price, 
+        b.message, 
+        b.status,
+        p.sender_id,
+        p.status as parcel_status,
+        p.is_free_for_bidding
+      FROM bids b
+      JOIN parcels p ON p.id = b.parcel_id
+      WHERE b.id = \$1
+    ''', parameters: [bidId]);
+
+      if (bidResult.isEmpty) {
+        print('❌ Offre non trouvée: $bidId');
+        return {'success': false, 'message': 'Offre non trouvée'};
+      }
+
+      final row = bidResult.first;
+      final parcelId = row[1].toString();
+      final driverId = row[2].toString();
+      final driverName = row[3].toString();
+      final driverPhone = row[4].toString();
+      final price = double.tryParse(row[5].toString()) ?? 0;
+      final bidStatus = row[7].toString();
+      final senderId = row[8].toString();
+      final parcelStatus = row[9].toString();
+      final isFreeForBidding = row[10] == true;
+
+      print('📦 ParcelId: $parcelId');
+      print('👤 SenderId: $senderId');
+      print('👤 ClientId: $clientId');
+      print('💰 Price: $price');
+      print('📊 BidStatus: $bidStatus');
+      print('📊 ParcelStatus: $parcelStatus');
+      print('🔓 isFreeForBidding: $isFreeForBidding');
+
+      if (senderId != clientId) {
+        print('❌ Non autorisé: senderId=$senderId, clientId=$clientId');
+        return {
+          'success': false,
+          'message': 'Vous n\'êtes pas autorisé à accepter cette offre'
+        };
+      }
+
+      if (bidStatus != 'pending') {
+        print('❌ Offre déjà traitée: $bidStatus');
+        return {'success': false, 'message': 'Cette offre a déjà été traitée'};
+      }
+
+      if (parcelStatus != 'free' || !isFreeForBidding) {
+        print(
+            '❌ Colis non disponible: status=$parcelStatus, isFree=$isFreeForBidding');
+        return {'success': false, 'message': 'Ce colis n\'est plus disponible'};
+      }
+
+      await db.connection.execute('BEGIN');
+
+      try {
+        await db.connection.execute('''
+        UPDATE bids 
+        SET status = 'accepted', responded_at = \$2
+        WHERE id = \$1
+      ''', parameters: [bidId, DateTime.now()]);
+
+        await db.connection.execute('''
+        UPDATE bids 
+        SET status = 'rejected', responded_at = \$2
+        WHERE parcel_id = \$1 AND id != \$3 AND status = 'pending'
+      ''', parameters: [parcelId, DateTime.now(), bidId]);
+
+        await db.connection.execute('''
+        UPDATE parcels 
+        SET driver_id = \$2, 
+            driver_name = \$3, 
+            driver_phone = \$4,
+            status = 'confirmed', 
+            is_free_for_bidding = false,
+            negotiated_price = \$5,
+            selected_bid_id = \$6,
+            updated_at = NOW()
+        WHERE id = \$1
+      ''', parameters: [
+          parcelId,
+          driverId,
+          driverName,
+          driverPhone,
+          price,
+          bidId
+        ]);
+
+        await createParcelEvent(
+          parcelId,
+          'confirmed',
+          '✅ Offre acceptée: $driverName au prix de ${price.toStringAsFixed(0)} FCFA',
+          userId: driverId,
+          userName: driverName,
+          metadata: {
+            'type': 'bid_accepted',
+            'bidId': bidId,
+            'price': price,
+            'driverId': driverId,
+            'driverName': driverName,
+          },
+        );
+
+        await db.connection.execute('COMMIT');
+
+        print('✅ Offre acceptée avec succès!');
+
+        return {
+          'success': true,
+          'message': 'Offre acceptée avec succès',
+          'parcelId': parcelId,
+          'driverId': driverId,
+          'driverName': driverName,
+          'price': price,
+        };
+      } catch (e) {
+        await db.connection.execute('ROLLBACK');
+        print('❌ Erreur pendant la transaction: $e');
+        return {'success': false, 'message': e.toString()};
+      }
+    } catch (e) {
+      print('❌ Erreur acceptBid: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> rejectBid(
+    String bidId,
+    String clientId, {
+    String? responseMessage,
+  }) async {
+    final db = await DatabaseService.getInstance();
+
+    try {
+      print('❌ rejectBid - bidId: $bidId, clientId: $clientId');
+
+      final bidResult = await db.connection.execute('''
+        SELECT 
+          b.id, 
+          b.parcel_id, 
+          b.driver_id, 
+          b.driver_name, 
+          b.driver_phone, 
+          b.price, 
+          b.message, 
+          b.status,
+          p.sender_id,
+          p.status as parcel_status
+        FROM bids b
+        JOIN parcels p ON p.id = b.parcel_id
+        WHERE b.id = \$1
+      ''', parameters: [bidId]);
+
+      if (bidResult.isEmpty) {
+        print('❌ Offre non trouvée: $bidId');
+        return {'success': false, 'message': 'Offre non trouvée'};
+      }
+
+      final row = bidResult.first;
+      final parcelId = row[1].toString();
+      final driverName = row[3].toString();
+      final senderId = row[8].toString();
+
+      print('📦 ParcelId: $parcelId');
+      print('👤 SenderId: $senderId');
+      print('👤 ClientId: $clientId');
+
+      if (senderId != clientId) {
+        print('❌ Non autorisé: senderId=$senderId, clientId=$clientId');
+        return {
+          'success': false,
+          'message': 'Vous n\'êtes pas autorisé à refuser cette offre'
+        };
+      }
+
+      await db.connection.execute('''
+        UPDATE bids 
+        SET status = 'rejected', responded_at = \$2, response_message = \$3
+        WHERE id = \$1
+      ''', parameters: [bidId, DateTime.now(), responseMessage]);
+
+      await createParcelEvent(
+        parcelId,
+        'free',
+        'Offre refusée: $driverName',
+        metadata: {
+          'type': 'bid_rejected',
+          'bidId': bidId,
+          'driverName': driverName,
+        },
+      );
+
+      print('✅ Offre $bidId refusée avec succès');
+
+      return {
+        'success': true,
+        'message': 'Offre refusée avec succès',
+      };
+    } catch (e) {
+      print('❌ Erreur rejectBid: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> setParcelFreeForBidding(
+    String parcelId,
+    String clientId, {
+    double? proposedPrice,
+  }) async {
+    final db = await DatabaseService.getInstance();
+
+    try {
+      final parcelResult = await db.connection.execute('''
+        SELECT sender_id FROM parcels WHERE id = \$1
+      ''', parameters: [parcelId]);
+
+      if (parcelResult.isEmpty) {
+        return {'success': false, 'message': 'Colis non trouvé'};
+      }
+
+      final senderId = parcelResult.first[0].toString();
+      if (senderId != clientId) {
+        return {
+          'success': false,
+          'message': 'Vous n\'êtes pas autorisé à modifier ce colis'
+        };
+      }
+
+      final updates = ['is_free_for_bidding = true', 'status = \'free\''];
+      final params = [parcelId];
+
+      if (proposedPrice != null) {
+        updates.add('proposed_price = \$2');
+        params.insert(1, proposedPrice as String);
+      }
+
+      await db.connection.execute(
+        'UPDATE parcels SET ${updates.join(', ')}, updated_at = NOW() WHERE id = \$1',
+        parameters: params,
+      );
+
+      await createParcelEvent(
+        parcelId,
+        'free',
+        'Colis mis en libre service',
+        userId: clientId,
+        metadata: {
+          'type': 'free_bidding_enabled',
+          'proposedPrice': proposedPrice,
+        },
+      );
+
+      return {
+        'success': true,
+        'message': 'Colis mis en libre service avec succès',
+      };
+    } catch (e) {
+      print('❌ Erreur setParcelFreeForBidding: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ==================== SUITE DES MÉTHODES EXISTANTES ====================
 
   Future<List<Map<String, dynamic>>> getDriverParcels(String driverId) async {
     final db = await DatabaseService.getInstance();
@@ -811,7 +1355,8 @@ Merci d'avoir choisi PRO COLIS !
       WHERE table_name = 'parcel_events'
     ''');
 
-    final existingColumns = columnsResult.map((row) => row[0].toString()).toSet();
+    final existingColumns =
+        columnsResult.map((row) => row[0].toString()).toSet();
 
     final columns = ['id', 'parcel_id', 'status', 'description', 'created_at'];
     final values = [eventId, parcelId, status, description, DateTime.now()];
@@ -849,8 +1394,10 @@ Merci d'avoir choisi PRO COLIS !
       values.add(jsonEncode(metadata));
     }
 
-    final placeholders = List.generate(values.length, (i) => '\$${i + 1}').join(', ');
-    final sql = 'INSERT INTO parcel_events (${columns.join(', ')}) VALUES ($placeholders)';
+    final placeholders =
+        List.generate(values.length, (i) => '\$${i + 1}').join(', ');
+    final sql =
+        'INSERT INTO parcel_events (${columns.join(', ')}) VALUES ($placeholders)';
 
     try {
       await db.connection.execute(sql, parameters: values);
@@ -875,7 +1422,6 @@ Merci d'avoir choisi PRO COLIS !
     final db = await DatabaseService.getInstance();
 
     try {
-      // Récupérer les infos pour notification
       final parcelInfo = await db.connection.execute('''
         SELECT p.tracking_number, p.sender_id, p.receiver_name, p.receiver_email,
                u.email as sender_email, u.full_name as sender_name
@@ -892,13 +1438,11 @@ Merci d'avoir choisi PRO COLIS !
         final senderEmail = parcelInfo.first[4].toString();
         final senderName = parcelInfo.first[5].toString();
 
-        // Mettre à jour le statut
         await db.connection.execute(
           'UPDATE parcels SET status = \$2, updated_at = NOW() WHERE id = \$1',
           parameters: [parcelId, newStatus],
         );
 
-        // Créer l'événement
         await createParcelEvent(
           parcelId,
           newStatus,
@@ -913,38 +1457,34 @@ Merci d'avoir choisi PRO COLIS !
 
         final statusLabel = _getStatusLabel(newStatus);
 
-        // Envoyer notification à l'expéditeur
         if (senderEmail.isNotEmpty) {
-          unawaited(
-            _sendParcelNotification(
-              toEmail: senderEmail,
-              toPhone: '',
-              trackingNumber: trackingNumber,
-              status: newStatus,
-              statusLabel: statusLabel,
-              receiverName: receiverName,
-              location: location,
-              senderName: senderName,
-            ).then((_) => print('✅ Email envoyé à $senderEmail'))
-              .catchError((e) => print('❌ Erreur email: $e'))
-          );
+          unawaited(_sendParcelNotification(
+            toEmail: senderEmail,
+            toPhone: '',
+            trackingNumber: trackingNumber,
+            status: newStatus,
+            statusLabel: statusLabel,
+            receiverName: receiverName,
+            location: location,
+            senderName: senderName,
+          )
+              .then((_) => print('✅ Email envoyé à $senderEmail'))
+              .catchError((e) => print('❌ Erreur email: $e')));
         }
 
-        // Envoyer notification au destinataire
         if (receiverEmail != null && receiverEmail.isNotEmpty) {
-          unawaited(
-            _sendParcelNotification(
-              toEmail: receiverEmail,
-              toPhone: '',
-              trackingNumber: trackingNumber,
-              status: newStatus,
-              statusLabel: statusLabel,
-              receiverName: receiverName,
-              location: location,
-              senderName: senderName,
-            ).then((_) => print('✅ Email envoyé à $receiverEmail'))
-              .catchError((e) => print('❌ Erreur email: $e'))
-          );
+          unawaited(_sendParcelNotification(
+            toEmail: receiverEmail,
+            toPhone: '',
+            trackingNumber: trackingNumber,
+            status: newStatus,
+            statusLabel: statusLabel,
+            receiverName: receiverName,
+            location: location,
+            senderName: senderName,
+          )
+              .then((_) => print('✅ Email envoyé à $receiverEmail'))
+              .catchError((e) => print('❌ Erreur email: $e')));
         }
       } else {
         await db.connection.execute(
@@ -1009,7 +1549,6 @@ Merci d'avoir choisi PRO COLIS !
         metadata: {'type': 'cancellation', 'reason': reason},
       );
 
-      // Envoyer notification d'annulation
       final parcelInfo = await db.connection.execute('''
         SELECT p.tracking_number, p.receiver_name, u.email as sender_email
         FROM parcels p
@@ -1022,18 +1561,17 @@ Merci d'avoir choisi PRO COLIS !
         final receiverName = parcelInfo.first[1].toString();
         final senderEmail = parcelInfo.first[2].toString();
 
-        unawaited(
-          _sendParcelNotification(
-            toEmail: senderEmail,
-            toPhone: '',
-            trackingNumber: trackingNumber,
-            status: 'cancelled',
-            statusLabel: 'Annulé',
-            receiverName: receiverName,
-            location: null,
-          ).then((_) => print('✅ Email d\'annulation envoyé'))
-            .catchError((e) => print('❌ Erreur email: $e'))
-        );
+        unawaited(_sendParcelNotification(
+          toEmail: senderEmail,
+          toPhone: '',
+          trackingNumber: trackingNumber,
+          status: 'cancelled',
+          statusLabel: 'Annulé',
+          receiverName: receiverName,
+          location: null,
+        )
+            .then((_) => print('✅ Email d\'annulation envoyé'))
+            .catchError((e) => print('❌ Erreur email: $e')));
       }
 
       return await getParcelById(parcelId);
@@ -1322,6 +1860,7 @@ Merci d'avoir choisi PRO COLIS !
     final parcels = await getAllParcels();
     return {
       'total': parcels.length,
+      'free': parcels.where((p) => p['status'] == 'free').length,
       'pending': parcels.where((p) => p['status'] == 'pending').length,
       'confirmed': parcels.where((p) => p['status'] == 'confirmed').length,
       'inTransit': parcels.where((p) => p['status'] == 'in_transit').length,
@@ -1338,6 +1877,7 @@ Merci d'avoir choisi PRO COLIS !
     return {
       'date': date,
       'totalParcels': filtered.length,
+      'free': filtered.where((p) => p['status'] == 'free').length,
       'delivered': filtered.where((p) => p['status'] == 'delivered').length,
       'cancelled': filtered.where((p) => p['status'] == 'cancelled').length,
       'parcels': filtered,
@@ -1354,6 +1894,7 @@ Merci d'avoir choisi PRO COLIS !
       'year': year,
       'month': month,
       'totalParcels': filtered.length,
+      'free': filtered.where((p) => p['status'] == 'free').length,
       'delivered': filtered.where((p) => p['status'] == 'delivered').length,
       'cancelled': filtered.where((p) => p['status'] == 'cancelled').length,
       'parcels': filtered,

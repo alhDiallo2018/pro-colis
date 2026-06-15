@@ -62,16 +62,33 @@ class AuthRoutes {
 
     // Login avec PIN
     router.post('/login-with-pin', (Request request) async {
-      try {
-        final body = await request.readAsString();
-        final data = jsonDecode(body);
-        final result = await _authService.loginWithPin(data['pin']);
-        return Response.ok(jsonEncode(result));
-      } catch (e) {
-        return Response.internalServerError(
-            body: jsonEncode({'success': false, 'message': e.toString()}));
-      }
-    });
+  try {
+    final body = await request.readAsString();
+    final data = jsonDecode(body);
+    final pin = data['pin'];
+    final identifier = data['identifier']; // ✅ AJOUTER l'identifiant
+    
+    if (identifier == null || identifier.toString().isEmpty) {
+      return Response.badRequest(body: jsonEncode({
+        'success': false,
+        'message': 'L\'identifiant (email/téléphone) est requis'
+      }));
+    }
+    
+    if (pin == null || pin.toString().isEmpty) {
+      return Response.badRequest(body: jsonEncode({
+        'success': false,
+        'message': 'Le PIN est requis'
+      }));
+    }
+    
+    final result = await _authService.loginWithPin(pin, identifier);
+    return Response.ok(jsonEncode(result));
+  } catch (e) {
+    return Response.internalServerError(
+        body: jsonEncode({'success': false, 'message': e.toString()}));
+  }
+});
 
     // Récupérer l'utilisateur connecté (après authentification)
     router.get('/me', (Request request) async {

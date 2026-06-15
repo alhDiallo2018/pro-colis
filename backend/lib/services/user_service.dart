@@ -110,6 +110,39 @@ class UserService {
       return [];
     }
   }
+
+
+  Future<List<Map<String, dynamic>>> getAllClients() async {
+    final db = await DatabaseService.getInstance();
+    
+    try {
+      final result = await db.connection.execute('''
+        SELECT 
+          u.id, u.email, u.phone, u.full_name, u.role, u.status, 
+          u.created_at, u.last_login, u.is_approved,
+          g.name AS garage_name
+        FROM users u
+        LEFT JOIN garages g ON g.id = u.garage_id
+        ORDER BY u.created_at DESC
+      ''');
+      
+      return result.map((row) => ({
+        'id': row[0],
+        'email': row[1],
+        'phone': row[2],
+        'fullName': row[3],
+        'role': row[4],
+        'status': row[5],
+        'createdAt': (row[6] as DateTime).toIso8601String(),
+        'lastLogin': row[7] != null ? (row[7] as DateTime).toIso8601String() : null,
+        'isApproved': row[8] ?? false,
+        'garageName': row[9],
+      })).toList();
+    } catch (e) {
+      print('❌ Erreur getAllUsers: $e');
+      return [];
+    }
+  }
   
   // Mettre à jour le profil utilisateur avec TOUS les champs
   Future<Map<String, dynamic>> updateProfile(String userId, Map<String, dynamic> data) async {

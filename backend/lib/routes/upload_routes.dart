@@ -1,7 +1,9 @@
 // backend/lib/routes/upload_routes.dart
+
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as path;
 import 'package:procolis_backend/services/cloudinary_service.dart';
 import 'package:procolis_backend/services/database_service.dart';
 import 'package:shelf/shelf.dart';
@@ -58,7 +60,7 @@ class UploadRoutes {
     final router = Router();
 
     // ==================== PHOTO DE PROFIL ====================
-    
+
     router.post('/profile-photo', (Request request) async {
       try {
         final body = await request.readAsString();
@@ -70,7 +72,8 @@ class UploadRoutes {
 
         if (base64File == null || base64File.isEmpty) {
           return Response.badRequest(
-              body: jsonEncode({'success': false, 'message': 'Fichier manquant'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'Fichier manquant'}));
         }
 
         String cleanBase64 = base64File;
@@ -87,7 +90,8 @@ class UploadRoutes {
 
         if (publicUrl == null) {
           return Response.internalServerError(
-              body: jsonEncode({'success': false, 'message': 'Erreur lors de l\'upload'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'Erreur lors de l\'upload'}));
         }
 
         final db = await DatabaseService.getInstance();
@@ -108,7 +112,7 @@ class UploadRoutes {
     });
 
     // ==================== PHOTO DE COLIS ====================
-    
+
     router.post('/parcel-photo', (Request request) async {
       try {
         final body = await request.readAsString();
@@ -120,13 +124,15 @@ class UploadRoutes {
 
         if (base64File == null || base64File.isEmpty) {
           return Response.badRequest(
-              body: jsonEncode({'success': false, 'message': 'Fichier manquant'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'Fichier manquant'}));
         }
 
         // Vérifier que le parcelId est un UUID valide
         if (!_isValidUuid(parcelId)) {
           return Response.badRequest(
-              body: jsonEncode({'success': false, 'message': 'ID de colis invalide'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'ID de colis invalide'}));
         }
 
         String cleanBase64 = base64File;
@@ -135,7 +141,7 @@ class UploadRoutes {
         }
 
         final bytes = base64Decode(cleanBase64);
-        
+
         final String? publicUrl = await _uploadToCloudinaryOrLocal(
           bytes: bytes,
           filename: filename,
@@ -144,7 +150,8 @@ class UploadRoutes {
 
         if (publicUrl == null) {
           return Response.internalServerError(
-              body: jsonEncode({'success': false, 'message': 'Erreur lors de l\'upload'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'Erreur lors de l\'upload'}));
         }
 
         // Mettre à jour la base de données
@@ -156,11 +163,8 @@ class UploadRoutes {
 
         print('✅ [PARCEL_PHOTO] Photo uploadée: $publicUrl');
 
-        return Response.ok(jsonEncode({
-          'success': true,
-          'url': publicUrl,
-          'parcelId': parcelId
-        }));
+        return Response.ok(jsonEncode(
+            {'success': true, 'url': publicUrl, 'parcelId': parcelId}));
       } catch (e) {
         print('❌ [PARCEL_PHOTO] Erreur: $e');
         return Response.internalServerError(
@@ -169,7 +173,7 @@ class UploadRoutes {
     });
 
     // ==================== VIDÉO DE COLIS ====================
-    
+
     router.post('/parcel-video', (Request request) async {
       try {
         final body = await request.readAsString();
@@ -181,13 +185,15 @@ class UploadRoutes {
 
         if (base64File == null || base64File.isEmpty) {
           return Response.badRequest(
-              body: jsonEncode({'success': false, 'message': 'Fichier manquant'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'Fichier manquant'}));
         }
 
         // Vérifier que le parcelId est un UUID valide
         if (!_isValidUuid(parcelId)) {
           return Response.badRequest(
-              body: jsonEncode({'success': false, 'message': 'ID de colis invalide'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'ID de colis invalide'}));
         }
 
         String cleanBase64 = base64File;
@@ -196,7 +202,7 @@ class UploadRoutes {
         }
 
         final bytes = base64Decode(cleanBase64);
-        
+
         final String? publicUrl = await _uploadToCloudinaryOrLocal(
           bytes: bytes,
           filename: filename,
@@ -205,16 +211,21 @@ class UploadRoutes {
 
         if (publicUrl == null) {
           return Response.internalServerError(
-              body: jsonEncode({'success': false, 'message': 'Erreur lors de l\'upload'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'Erreur lors de l\'upload'}));
         }
+
+        // Mettre à jour la base de données
+        final db = await DatabaseService.getInstance();
+        await db.connection.execute(
+          'UPDATE parcels SET video_urls = array_append(video_urls, \$1) WHERE id = \$2',
+          parameters: [publicUrl, parcelId],
+        );
 
         print('✅ [PARCEL_VIDEO] Vidéo uploadée: $publicUrl');
 
-        return Response.ok(jsonEncode({
-          'success': true,
-          'url': publicUrl,
-          'parcelId': parcelId
-        }));
+        return Response.ok(jsonEncode(
+            {'success': true, 'url': publicUrl, 'parcelId': parcelId}));
       } catch (e) {
         print('❌ [PARCEL_VIDEO] Erreur: $e');
         return Response.internalServerError(
@@ -222,8 +233,70 @@ class UploadRoutes {
       }
     });
 
+    // ==================== MESSAGE VOCAL DE COLIS ====================
+    // ✅ AJOUTÉ: Route pour l'upload des messages vocaux
+
+    router.post('/parcel-audio', (Request request) async {
+      try {
+        final body = await request.readAsString();
+        final data = jsonDecode(body);
+
+        final base64File = data['file'];
+        final parcelId = data['parcelId'];
+        final filename = data['filename'] ?? 'audio.m4a';
+
+        if (base64File == null || base64File.isEmpty) {
+          return Response.badRequest(
+              body: jsonEncode(
+                  {'success': false, 'message': 'Fichier manquant'}));
+        }
+
+        // Vérifier que le parcelId est un UUID valide
+        if (!_isValidUuid(parcelId)) {
+          return Response.badRequest(
+              body: jsonEncode(
+                  {'success': false, 'message': 'ID de colis invalide'}));
+        }
+
+        String cleanBase64 = base64File;
+        if (base64File.contains(',')) {
+          cleanBase64 = base64File.split(',').last;
+        }
+
+        final bytes = base64Decode(cleanBase64);
+
+        final String? publicUrl = await _uploadToCloudinaryOrLocal(
+          bytes: bytes,
+          filename: filename,
+          folder: 'parcels/$parcelId/audio',
+        );
+
+        if (publicUrl == null) {
+          return Response.internalServerError(
+              body: jsonEncode(
+                  {'success': false, 'message': 'Erreur lors de l\'upload'}));
+        }
+
+        // Mettre à jour la base de données
+        final db = await DatabaseService.getInstance();
+        await db.connection.execute(
+          'UPDATE parcels SET audio_urls = array_append(audio_urls, \$1) WHERE id = \$2',
+          parameters: [publicUrl, parcelId],
+        );
+
+        print('✅ [PARCEL_AUDIO] Message vocal uploadé: $publicUrl');
+
+        return Response.ok(jsonEncode(
+            {'success': true, 'url': publicUrl, 'parcelId': parcelId}));
+      } catch (e) {
+        print('❌ [PARCEL_AUDIO] Erreur: $e');
+        return Response.internalServerError(
+            body: jsonEncode({'success': false, 'message': e.toString()}));
+      }
+    });
+
     // ==================== UPLOAD GÉNÉRIQUE BASE64 ====================
-    
+
     router.post('/base64', (Request request) async {
       try {
         final body = await request.readAsString();
@@ -235,7 +308,8 @@ class UploadRoutes {
 
         if (base64File == null || base64File.isEmpty) {
           return Response.badRequest(
-              body: jsonEncode({'success': false, 'message': 'Fichier manquant'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'Fichier manquant'}));
         }
 
         String cleanBase64 = base64File;
@@ -244,7 +318,7 @@ class UploadRoutes {
         }
 
         final bytes = base64Decode(cleanBase64);
-        
+
         final String? publicUrl = await _uploadToCloudinaryOrLocal(
           bytes: bytes,
           filename: filename,
@@ -253,16 +327,14 @@ class UploadRoutes {
 
         if (publicUrl == null) {
           return Response.internalServerError(
-              body: jsonEncode({'success': false, 'message': 'Erreur lors de l\'upload'}));
+              body: jsonEncode(
+                  {'success': false, 'message': 'Erreur lors de l\'upload'}));
         }
 
         print('✅ [BASE64] Fichier uploadé: $publicUrl');
 
-        return Response.ok(jsonEncode({
-          'success': true,
-          'url': publicUrl,
-          'fileId': _uuid.v4()
-        }));
+        return Response.ok(jsonEncode(
+            {'success': true, 'url': publicUrl, 'fileId': _uuid.v4()}));
       } catch (e) {
         print('❌ [BASE64] Erreur: $e');
         return Response.internalServerError(
@@ -297,13 +369,14 @@ class UploadRoutes {
         print('❌ [CLOUDINARY] Erreur: $e, fallback vers stockage local');
       }
     }
-    
+
     // Stockage local
     return await _saveToLocal(bytes, filename, folder);
   }
 
   /// Sauvegarde locale du fichier
-  Future<String> _saveToLocal(List<int> bytes, String filename, String folder) async {
+  Future<String> _saveToLocal(
+      List<int> bytes, String filename, String folder) async {
     final uploadDir = Directory('uploads/$folder');
     if (!await uploadDir.exists()) {
       await uploadDir.create(recursive: true);
@@ -311,14 +384,14 @@ class UploadRoutes {
 
     final extension = filename.split('.').last;
     final uniqueName = '${_uuid.v4()}.$extension';
-    final filePath = '${uploadDir.path}/$uniqueName';
+    final filePath = path.join(uploadDir.path, uniqueName);
 
     final file = File(filePath);
     await file.writeAsBytes(bytes);
 
     final publicUrl = '/uploads/$folder/$uniqueName';
     print('✅ [LOCAL] Fichier sauvegardé: $publicUrl');
-    
+
     return publicUrl;
   }
 

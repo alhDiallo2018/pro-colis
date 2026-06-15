@@ -1,8 +1,8 @@
 // backend/lib/models/parcel.dart
 
-
 enum ParcelStatus {
   pending,
+  free,
   confirmed,
   pickedUp,
   inTransit,
@@ -15,6 +15,8 @@ enum ParcelStatus {
     switch (this) {
       case ParcelStatus.pending:
         return 'pending';
+      case ParcelStatus.free:
+        return 'free';
       case ParcelStatus.confirmed:
         return 'confirmed';
       case ParcelStatus.pickedUp:
@@ -36,6 +38,8 @@ enum ParcelStatus {
     switch (value) {
       case 'pending':
         return ParcelStatus.pending;
+      case 'free':
+        return ParcelStatus.free;
       case 'confirmed':
         return ParcelStatus.confirmed;
       case 'picked_up':
@@ -54,6 +58,21 @@ enum ParcelStatus {
         return ParcelStatus.pending;
     }
   }
+  
+  bool get isFree => this == ParcelStatus.free;
+  bool get isPending => this == ParcelStatus.pending;
+  bool get isConfirmed => this == ParcelStatus.confirmed;
+  bool get isPickedUp => this == ParcelStatus.pickedUp;
+  bool get isInTransit => this == ParcelStatus.inTransit;
+  bool get isArrived => this == ParcelStatus.arrived;
+  bool get isOutForDelivery => this == ParcelStatus.outForDelivery;
+  bool get isDelivered => this == ParcelStatus.delivered;
+  bool get isCancelled => this == ParcelStatus.cancelled;
+  bool get isInProgress => this == ParcelStatus.confirmed || 
+                            this == ParcelStatus.pickedUp || 
+                            this == ParcelStatus.inTransit || 
+                            this == ParcelStatus.arrived || 
+                            this == ParcelStatus.outForDelivery;
 }
 
 enum ParcelType {
@@ -131,6 +150,95 @@ enum PaymentMethod {
   }
 }
 
+// Classe pour les offres (bids) sur les colis en libre service
+class Bid {
+  final String id;
+  final String parcelId;
+  final String driverId;
+  final String driverName;
+  final String driverPhone;
+  final double price;
+  final String? message;
+  final BidStatus status;
+  final DateTime createdAt;
+  final DateTime? respondedAt;
+  final String? responseMessage;
+
+  Bid({
+    required this.id,
+    required this.parcelId,
+    required this.driverId,
+    required this.driverName,
+    required this.driverPhone,
+    required this.price,
+    this.message,
+    this.status = BidStatus.pending,
+    required this.createdAt,
+    this.respondedAt,
+    this.responseMessage,
+  });
+
+  factory Bid.fromJson(Map<String, dynamic> json) {
+    return Bid(
+      id: json['id'].toString(),
+      parcelId: json['parcel_id'].toString(),
+      driverId: json['driver_id'].toString(),
+      driverName: json['driver_name'].toString(),
+      driverPhone: json['driver_phone'].toString(),
+      price: (json['price'] as num).toDouble(),
+      message: json['message']?.toString(),
+      status: json['status'] != null ? BidStatus.fromString(json['status'].toString()) : BidStatus.pending,
+      createdAt: DateTime.parse(json['created_at'].toString()),
+      respondedAt: json['responded_at'] != null ? DateTime.parse(json['responded_at'].toString()) : null,
+      responseMessage: json['response_message']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'parcel_id': parcelId,
+    'driver_id': driverId,
+    'driver_name': driverName,
+    'driver_phone': driverPhone,
+    'price': price,
+    'message': message,
+    'status': status.value,
+    'created_at': createdAt.toIso8601String(),
+    'responded_at': respondedAt?.toIso8601String(),
+    'response_message': responseMessage,
+  };
+}
+
+enum BidStatus {
+  pending,
+  accepted,
+  rejected;
+
+  String get value {
+    switch (this) {
+      case BidStatus.pending:
+        return 'pending';
+      case BidStatus.accepted:
+        return 'accepted';
+      case BidStatus.rejected:
+        return 'rejected';
+    }
+  }
+
+  static BidStatus fromString(String value) {
+    switch (value) {
+      case 'pending':
+        return BidStatus.pending;
+      case 'accepted':
+        return BidStatus.accepted;
+      case 'rejected':
+        return BidStatus.rejected;
+      default:
+        return BidStatus.pending;
+    }
+  }
+}
+
 class Parcel {
   final String id;
   final String trackingNumber;
@@ -162,6 +270,7 @@ class Parcel {
   final String? paymentStatus;
   final List<String> photoUrls;
   final List<String> videoUrls;
+  final List<String> audioUrls;  // ✅ AJOUTÉ: Messages vocaux
   final String? signatureUrl;
   final bool isInsured;
   final double? insuranceAmount;
@@ -177,6 +286,13 @@ class Parcel {
   final String? cancelledBy;
   final String? cancellationReason;
   final DateTime? cancelledAt;
+  
+  // Champs pour le libre service (marchandage)
+  final bool isFreeForBidding;
+  final double? proposedPrice;
+  final double? negotiatedPrice;
+  final String? selectedBidId;
+  final List<Bid> bids;
 
   Parcel({
     required this.id,
@@ -209,6 +325,7 @@ class Parcel {
     this.paymentStatus,
     this.photoUrls = const [],
     this.videoUrls = const [],
+    this.audioUrls = const [],  // ✅ AJOUTÉ
     this.signatureUrl,
     this.isInsured = false,
     this.insuranceAmount,
@@ -224,9 +341,22 @@ class Parcel {
     this.cancelledBy,
     this.cancellationReason,
     this.cancelledAt,
+    this.isFreeForBidding = false,
+    this.proposedPrice,
+    this.negotiatedPrice,
+    this.selectedBidId,
+    this.bids = const [],
   });
 
   factory Parcel.fromJson(Map<String, dynamic> json) {
+    // Récupérer les offres (bids)
+    List<Bid> bids = [];
+    if (json['bids'] != null && json['bids'] is List) {
+      bids = (json['bids'] as List)
+          .map((bid) => Bid.fromJson(bid as Map<String, dynamic>))
+          .toList();
+    }
+    
     return Parcel(
       id: json['id'].toString(),
       trackingNumber: json['tracking_number'].toString(),
@@ -258,6 +388,7 @@ class Parcel {
       paymentStatus: json['payment_status']?.toString(),
       photoUrls: json['photo_urls'] != null ? List<String>.from(json['photo_urls']) : [],
       videoUrls: json['video_urls'] != null ? List<String>.from(json['video_urls']) : [],
+      audioUrls: json['audio_urls'] != null ? List<String>.from(json['audio_urls']) : [],  // ✅ AJOUTÉ
       signatureUrl: json['signature_url']?.toString(),
       isInsured: json['is_insured'] ?? false,
       insuranceAmount: json['insurance_amount'] != null ? (json['insurance_amount'] as num).toDouble() : null,
@@ -273,19 +404,25 @@ class Parcel {
       cancelledBy: json['cancelled_by']?.toString(),
       cancellationReason: json['cancellation_reason']?.toString(),
       cancelledAt: json['cancelled_at'] != null ? DateTime.parse(json['cancelled_at'].toString()) : null,
+      // Nouveaux champs
+      isFreeForBidding: json['is_free_for_bidding'] ?? false,
+      proposedPrice: json['proposed_price'] != null ? (json['proposed_price'] as num).toDouble() : null,
+      negotiatedPrice: json['negotiated_price'] != null ? (json['negotiated_price'] as num).toDouble() : null,
+      selectedBidId: json['selected_bid_id']?.toString(),
+      bids: bids,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'trackingNumber': trackingNumber,
-    'senderId': senderId,
-    'senderName': senderName,
-    'senderPhone': senderPhone,
-    'receiverName': receiverName,
-    'receiverPhone': receiverPhone,
-    'receiverEmail': receiverEmail,
-    'receiverAddress': receiverAddress,
+    'tracking_number': trackingNumber,
+    'sender_id': senderId,
+    'sender_name': senderName,
+    'sender_phone': senderPhone,
+    'receiver_name': receiverName,
+    'receiver_phone': receiverPhone,
+    'receiver_email': receiverEmail,
+    'receiver_address': receiverAddress,
     'description': description,
     'weight': weight,
     'length': length,
@@ -293,36 +430,67 @@ class Parcel {
     'height': height,
     'type': type.value,
     'status': status.value,
-    'departureGarageId': departureGarageId,
-    'departureGarageName': departureGarageName,
-    'arrivalGarageId': arrivalGarageId,
-    'arrivalGarageName': arrivalGarageName,
-    'driverId': driverId,
-    'driverName': driverName,
-    'driverPhone': driverPhone,
+    'departure_garage_id': departureGarageId,
+    'departure_garage_name': departureGarageName,
+    'arrival_garage_id': arrivalGarageId,
+    'arrival_garage_name': arrivalGarageName,
+    'driver_id': driverId,
+    'driver_name': driverName,
+    'driver_phone': driverPhone,
     'price': price,
-    'deliveryFees': deliveryFees,
-    'totalAmount': totalAmount,
-    'paymentMethod': paymentMethod?.value,
-    'paymentStatus': paymentStatus,
-    'photoUrls': photoUrls,
-    'videoUrls': videoUrls,
-    'signatureUrl': signatureUrl,
-    'isInsured': isInsured,
-    'insuranceAmount': insuranceAmount,
-    'isUrgent': isUrgent,
-    'urgentFee': urgentFee,
+    'delivery_fees': deliveryFees,
+    'total_amount': totalAmount,
+    'payment_method': paymentMethod?.value,
+    'payment_status': paymentStatus,
+    'photo_urls': photoUrls,
+    'video_urls': videoUrls,
+    'audio_urls': audioUrls,  // ✅ AJOUTÉ
+    'signature_url': signatureUrl,
+    'is_insured': isInsured,
+    'insurance_amount': insuranceAmount,
+    'is_urgent': isUrgent,
+    'urgent_fee': urgentFee,
     'notes': notes,
-    'pickupDate': pickupDate?.toIso8601String(),
-    'deliveryDate': deliveryDate?.toIso8601String(),
-    'estimatedDeliveryDate': estimatedDeliveryDate?.toIso8601String(),
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt?.toIso8601String(),
-    'createdBy': createdBy,
-    'cancelledBy': cancelledBy,
-    'cancellationReason': cancellationReason,
-    'cancelledAt': cancelledAt?.toIso8601String(),
+    'pickup_date': pickupDate?.toIso8601String(),
+    'delivery_date': deliveryDate?.toIso8601String(),
+    'estimated_delivery_date': estimatedDeliveryDate?.toIso8601String(),
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt?.toIso8601String(),
+    'created_by': createdBy,
+    'cancelled_by': cancelledBy,
+    'cancellation_reason': cancellationReason,
+    'cancelled_at': cancelledAt?.toIso8601String(),
+    // Nouveaux champs
+    'is_free_for_bidding': isFreeForBidding,
+    'proposed_price': proposedPrice,
+    'negotiated_price': negotiatedPrice,
+    'selected_bid_id': selectedBidId,
+    'bids': bids.map((b) => b.toJson()).toList(),
   };
+  
+  // Propriétés calculées utiles
+  bool get hasBids => bids.isNotEmpty;
+  int get bidsCount => bids.length;
+  bool get hasAudio => audioUrls.isNotEmpty;
+  int get audioCount => audioUrls.length;
+  
+  Bid? get bestBid {
+    if (bids.isEmpty) return null;
+    return bids.reduce((a, b) => a.price > b.price ? a : b);
+  }
+  
+  Bid? get selectedBid {
+    if (selectedBidId == null) return null;
+    try {
+      return bids.firstWhere((b) => b.id == selectedBidId);
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  List<Bid> get pendingBids => bids.where((b) => b.status == BidStatus.pending).toList();
+  List<Bid> get acceptedBids => bids.where((b) => b.status == BidStatus.accepted).toList();
+  List<Bid> get rejectedBids => bids.where((b) => b.status == BidStatus.rejected).toList();
 }
 
 class ParcelEvent {
@@ -373,16 +541,16 @@ class ParcelEvent {
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'parcelId': parcelId,
+    'parcel_id': parcelId,
     'status': status.value,
     'description': description,
     'location': location,
-    'locationLat': locationLat,
-    'locationLng': locationLng,
-    'userId': userId,
-    'userName': userName,
-    'userRole': userRole,
-    'photoUrl': photoUrl,
-    'timestamp': timestamp.toIso8601String(),
+    'location_lat': locationLat,
+    'location_lng': locationLng,
+    'user_id': userId,
+    'user_name': userName,
+    'user_role': userRole,
+    'photo_url': photoUrl,
+    'created_at': timestamp.toIso8601String(),
   };
 }
