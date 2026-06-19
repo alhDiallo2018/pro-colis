@@ -574,7 +574,10 @@ Merci d'avoir choisi PRO COLIS !
         is_free_for_bidding,
         driver_id,
         driver_name,
-        driver_phone
+        driver_phone,
+        photo_urls,
+        video_urls,
+        audio_urls
       FROM parcels
       WHERE is_free_for_bidding = true 
       AND status = 'free'
@@ -592,7 +595,7 @@ Merci d'avoir choisi PRO COLIS !
         SELECT 
           id, driver_id, driver_name, driver_phone, 
           price, message, status, created_at, 
-          responded_at, response_message, audio_url
+          responded_at, response_message
         FROM bids 
         WHERE parcel_id = \$1
         ORDER BY price DESC, created_at ASC
@@ -612,45 +615,70 @@ Merci d'avoir choisi PRO COLIS !
                     ? (bidRow[8] as DateTime).toIso8601String()
                     : null,
                 'responseMessage': bidRow[9]?.toString(),
-                'audioUrl': bidRow[10]?.toString(),
               })
           .toList();
 
-      // Récupérer les photos
-      final photosResult = await db.connection.execute('''
-        SELECT photo_url 
-        FROM parcel_photos 
-        WHERE parcel_id = \$1
-        ORDER BY created_at ASC
-      ''', parameters: [parcelId]);
+      // Récupérer les photos depuis le tableau PostgreSQL
+      List<String> photoUrls = [];
+      try {
+        final photoData = row[28];
+        if (photoData != null) {
+          // PostgreSQL retourne un tableau PostgreSQL, on le convertit en List
+          if (photoData is List) {
+            photoUrls = photoData.map((e) => e.toString()).toList();
+          } else if (photoData is String) {
+            // Si c'est une chaîne JSON, on la parse
+            try {
+              final decoded = jsonDecode(photoData);
+              if (decoded is List) {
+                photoUrls = decoded.map((e) => e.toString()).toList();
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (e) {
+        print('⚠️ Erreur parsing photo_urls: $e');
+      }
 
-      final photoUrls = photosResult
-          .map((photoRow) => photoRow[0].toString())
-          .toList();
+      // Récupérer les vidéos depuis le tableau PostgreSQL
+      List<String> videoUrls = [];
+      try {
+        final videoData = row[29];
+        if (videoData != null) {
+          if (videoData is List) {
+            videoUrls = videoData.map((e) => e.toString()).toList();
+          } else if (videoData is String) {
+            try {
+              final decoded = jsonDecode(videoData);
+              if (decoded is List) {
+                videoUrls = decoded.map((e) => e.toString()).toList();
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (e) {
+        print('⚠️ Erreur parsing video_urls: $e');
+      }
 
-      // Récupérer les vidéos
-      final videosResult = await db.connection.execute('''
-        SELECT video_url 
-        FROM parcel_videos 
-        WHERE parcel_id = \$1
-        ORDER BY created_at ASC
-      ''', parameters: [parcelId]);
-
-      final videoUrls = videosResult
-          .map((videoRow) => videoRow[0].toString())
-          .toList();
-
-      // Récupérer les audios
-      final audiosResult = await db.connection.execute('''
-        SELECT audio_url 
-        FROM parcel_audios 
-        WHERE parcel_id = \$1
-        ORDER BY created_at ASC
-      ''', parameters: [parcelId]);
-
-      final audioUrls = audiosResult
-          .map((audioRow) => audioRow[0].toString())
-          .toList();
+      // Récupérer les audios depuis le tableau PostgreSQL
+      List<String> audioUrls = [];
+      try {
+        final audioData = row[30];
+        if (audioData != null) {
+          if (audioData is List) {
+            audioUrls = audioData.map((e) => e.toString()).toList();
+          } else if (audioData is String) {
+            try {
+              final decoded = jsonDecode(audioData);
+              if (decoded is List) {
+                audioUrls = decoded.map((e) => e.toString()).toList();
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (e) {
+        print('⚠️ Erreur parsing audio_urls: $e');
+      }
 
       print('📦 Parcel $parcelId: ${bids.length} bids, ${photoUrls.length} photos, ${videoUrls.length} videos, ${audioUrls.length} audios');
 
