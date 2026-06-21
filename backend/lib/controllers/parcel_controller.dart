@@ -790,11 +790,12 @@ class ParcelController {
       final parcelId = data['parcelId'];
       final price = (data['price'] as num).toDouble();
       final message = data['message']?.toString();
+      final audioUrl = data['audioUrl']?.toString(); // ✅ AJOUTÉ
 
       if (parcelId == null) {
         return Response.badRequest(body: jsonEncode({
           'success': false,
-          'message': 'parcelId et price sont requis',
+          'message': 'parcelId est requis',
         }));
       }
 
@@ -803,6 +804,7 @@ class ParcelController {
         driverId,
         price,
         message: message,
+        audioUrl: audioUrl, // ✅ AJOUTÉ
       );
 
       if (!result['success']) {
@@ -854,12 +856,13 @@ class ParcelController {
         'createdAt': (row[8] as DateTime).toIso8601String(),
         'respondedAt': row[9] != null ? (row[9] as DateTime).toIso8601String() : null,
         'responseMessage': row[10],
+        'audioUrl': row[11]?.toString(), // ✅ AJOUTÉ
         'parcel': {
-          'trackingNumber': row[11],
-          'senderName': row[12],
-          'receiverName': row[13],
-          'departureGarageName': row[14],
-          'arrivalGarageName': row[15],
+          'trackingNumber': row[11]?.toString() ?? row[12]?.toString(),
+          'senderName': row[12]?.toString() ?? row[13]?.toString(),
+          'receiverName': row[13]?.toString() ?? row[14]?.toString(),
+          'departureGarageName': row[14]?.toString() ?? row[15]?.toString(),
+          'arrivalGarageName': row[15]?.toString() ?? row[16]?.toString(),
         }
       }).toList();
 

@@ -576,6 +576,7 @@ class DriverRoutes {
             ? (data['price'] as num).toDouble()
             : double.tryParse(data['price'].toString());
         final message = data['message']?.toString();
+        final audioUrl = data['audioUrl']?.toString(); // ✅ AJOUTÉ
 
         if (parcelId == null || parcelId.isEmpty) {
           return Response.badRequest(
@@ -592,14 +593,12 @@ class DriverRoutes {
         final db = await DatabaseService.getInstance();
 
         // Vérifier que le colis existe et est en libre service
-        // ✅ CORRECTION: enlever 'parameters:' et passer directement la liste
         final parcelResult = await db.connection.execute('''
-      SELECT id, is_free_for_bidding, status, sender_id 
-      FROM parcels WHERE id = \$1
-    ''', parameters: [parcelId]);
+          SELECT id, is_free_for_bidding, status, sender_id 
+          FROM parcels WHERE id = \$1
+        ''', parameters: [parcelId]);
 
         if (parcelResult.isEmpty) {
-          // ✅ CORRECTION: Response.notFound prend un seul argument positionnel
           return Response.notFound(
               jsonEncode({'success': false, 'message': 'Colis non trouvé'}));
         }
@@ -618,10 +617,9 @@ class DriverRoutes {
 
         // Vérifier que le chauffeur n'a pas déjà fait une offre sur ce colis
         const existingBidCheck = '''
-      SELECT id FROM bids 
-      WHERE parcel_id = \$1 AND driver_id = \$2
-    ''';
-        // ✅ CORRECTION: enlever 'parameters:'
+          SELECT id FROM bids 
+          WHERE parcel_id = \$1 AND driver_id = \$2
+        ''';
         final existingBid = await db.connection
             .execute(existingBidCheck, parameters: [parcelId, driverId]);
 
@@ -634,10 +632,9 @@ class DriverRoutes {
         }
 
         // Récupérer les informations du chauffeur
-        // ✅ CORRECTION: enlever 'parameters:'
         final driverResult = await db.connection.execute('''
-      SELECT full_name, phone FROM users WHERE id = \$1
-    ''', parameters: [driverId]);
+          SELECT full_name, phone FROM users WHERE id = \$1
+        ''', parameters: [driverId]);
 
         final driverName =
             driverResult.isNotEmpty ? driverResult.first[0]?.toString() : '';
@@ -648,13 +645,13 @@ class DriverRoutes {
         final bidId = const Uuid().v4();
         final now = DateTime.now();
 
-        // ✅ CORRECTION: enlever 'parameters:'
+        // ✅ CORRECTION: Ajouter audio_url dans l'insertion
         await db.connection.execute('''
-      INSERT INTO bids (
-        id, parcel_id, driver_id, driver_name, driver_phone, 
-        price, message, status, created_at
-      ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9)
-    ''', parameters: [
+          INSERT INTO bids (
+            id, parcel_id, driver_id, driver_name, driver_phone, 
+            price, message, status, created_at, audio_url
+          ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10)
+        ''', parameters: [
           bidId,
           parcelId,
           driverId,
@@ -663,20 +660,20 @@ class DriverRoutes {
           price,
           message,
           'pending',
-          now
+          now,
+          audioUrl, // ✅ AJOUTÉ
         ]);
 
         // Créer un événement pour le colis
-        // ✅ CORRECTION: enlever 'parameters:'
         await db.connection.execute('''
-      INSERT INTO parcel_events (
-        id, parcel_id, status, description, user_id, user_name, user_role, created_at
-      ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8)
-    ''', parameters: [
+          INSERT INTO parcel_events (
+            id, parcel_id, status, description, user_id, user_name, user_role, created_at
+          ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8)
+        ''', parameters: [
           const Uuid().v4(),
           parcelId,
           'free',
-          'Nouvelle offre reçue pour ce colis',
+          'Nouvelle offre reçue pour ce colis${audioUrl != null ? ' 🎤 avec message vocal' : ''}',
           driverId,
           driverName,
           'driver',
@@ -684,6 +681,9 @@ class DriverRoutes {
         ]);
 
         print('✅ Offre créée avec succès: $bidId');
+        if (audioUrl != null) {
+          print('🎤 Audio URL: $audioUrl');
+        }
 
         return Response.ok(jsonEncode({
           'success': true,
@@ -698,6 +698,7 @@ class DriverRoutes {
             'message': message,
             'status': 'pending',
             'createdAt': now.toIso8601String(),
+            'audioUrl': audioUrl, // ✅ AJOUTÉ
           }
         }));
       } catch (e) {
@@ -729,7 +730,7 @@ class DriverRoutes {
         ''', parameters: [driverId]);
 
         final bids = result
-            .map((row) => {
+            .map((row) => ({
                   'id': row[0]?.toString(),
                   'parcelId': row[1]?.toString(),
                   'price': row[2],
@@ -745,7 +746,7 @@ class DriverRoutes {
                     'senderName': row[11]?.toString(),
                     'receiverName': row[12]?.toString(),
                   }
-                })
+                }))
             .toList();
 
         return Response.ok(

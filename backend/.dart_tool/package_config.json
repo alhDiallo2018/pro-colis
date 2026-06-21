@@ -87,7 +87,7 @@
     },
     {
       "name": "coverage",
-      "rootUri": "file:///Users/testad/.pub-cache/hosted/pub.dev/coverage-1.15.0",
+      "rootUri": "file:///Users/testad/.pub-cache/hosted/pub.dev/coverage-1.15.1",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -213,7 +213,7 @@
     },
     {
       "name": "meta",
-      "rootUri": "file:///Users/testad/.pub-cache/hosted/pub.dev/meta-1.18.2",
+      "rootUri": "file:///Users/testad/.pub-cache/hosted/pub.dev/meta-1.18.3",
       "packageUri": "lib/",
       "languageVersion": "3.5"
     },
@@ -267,7 +267,7 @@
     },
     {
       "name": "postgres",
-      "rootUri": "file:///Users/testad/.pub-cache/hosted/pub.dev/postgres-3.5.10",
+      "rootUri": "file:///Users/testad/.pub-cache/hosted/pub.dev/postgres-3.5.12",
       "packageUri": "lib/",
       "languageVersion": "3.9"
     },

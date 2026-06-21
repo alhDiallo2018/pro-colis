@@ -11,6 +11,7 @@ export 'notification_service.dart';
 export 'otp_service.dart';
 export 'parcel_service.dart';
 export 'payment_service.dart';
+export 'score_service.dart';
 export 'sms_service.dart';
 export 'stats_service.dart';
 export 'user_service.dart';

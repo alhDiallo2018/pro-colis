@@ -16,7 +16,9 @@ class AppRoutes {
     router.mount('/driver', DriverRoutes(emailService: emailService).router);
     router.mount('/garage-admin', GarageAdminRoutes(emailService: emailService).router);
     router.mount('/super-admin', SuperAdminRoutes(emailService: emailService).router);
+    router.mount('/notifications', NotificationRoutes().router);
     router.mount('/upload', UploadRoutes().router);
+    router.mount('/score', ScoreRoutes().router);
     
     // Route racine
     router.get('/', (Request request) {

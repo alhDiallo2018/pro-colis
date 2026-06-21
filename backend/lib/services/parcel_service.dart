@@ -7,14 +7,18 @@ import 'dart:convert';
 
 import 'package:procolis_backend/services/database_service.dart';
 import 'package:procolis_backend/services/email_service.dart';
+import 'package:procolis_backend/services/notification_service.dart';
 import 'package:uuid/uuid.dart';
 
 class ParcelService {
   final _uuid = const Uuid();
   final EmailService _emailService;
+  late final NotificationService _notificationService;
 
   ParcelService({required EmailService emailService})
-      : _emailService = emailService;
+      : _emailService = emailService {
+    _notificationService = NotificationService();
+  }
 
   // ==================== GÉNÉRATION ====================
 
@@ -174,7 +178,7 @@ Merci d'avoir choisi PRO COLIS !
       'urgent_fee': false,
       'insurance_amount': false,
       'video_urls': false,
-      'audio_urls': false,  // ✅ AJOUTÉ
+      'audio_urls': false,
       'estimated_delivery_date': false,
       'cancelled_by': false,
       'cancellation_reason': false,
@@ -223,7 +227,6 @@ Merci d'avoir choisi PRO COLIS !
     print('  - price: ${data['price']}');
     print('  - totalAmount: ${data['totalAmount']}');
 
-    // Récupérer les infos de l'utilisateur
     final userResult = await db.connection.execute(
       'SELECT full_name, phone, email, role FROM users WHERE id = \$1',
       parameters: [userId],
@@ -234,7 +237,6 @@ Merci d'avoir choisi PRO COLIS !
     final userRole = userResult.first[3].toString();
     final isDriver = userRole == 'driver';
 
-    // Vérifier si le colis est en libre service
     final isFreeForBidding = data['isFreeForBidding'] == true;
     final proposedPrice = isFreeForBidding
         ? (data['proposedPrice'] != null
@@ -242,7 +244,6 @@ Merci d'avoir choisi PRO COLIS !
             : null)
         : null;
 
-    // Statut initial
     String initialStatus;
     if (isFreeForBidding) {
       initialStatus = 'free';
@@ -252,14 +253,12 @@ Merci d'avoir choisi PRO COLIS !
       initialStatus = 'pending';
     }
 
-    // Auto-assignation du chauffeur
     final driverId = isDriver ? userId : data['driverId']?.toString();
     final driverName =
         isDriver ? currentUserName : data['driverName']?.toString();
     final driverPhone =
         isDriver ? currentUserPhone : data['driverPhone']?.toString();
 
-    // Données
     final senderName = data['senderName']?.toString();
     final senderPhone = data['senderPhone']?.toString();
     final senderEmail = data['senderEmail']?.toString();
@@ -279,13 +278,12 @@ Merci d'avoir choisi PRO COLIS !
     final pickupDate = data['pickupDate']?.toString();
     final estimatedDeliveryDate = data['estimatedDeliveryDate']?.toString();
 
-    // Médias
     final List<String> photoUrls =
         data['photoUrls'] != null ? List<String>.from(data['photoUrls']) : [];
     final List<String> videoUrls =
         data['videoUrls'] != null ? List<String>.from(data['videoUrls']) : [];
     final List<String> audioUrls =
-        data['audioUrls'] != null ? List<String>.from(data['audioUrls']) : [];  // ✅ AJOUTÉ
+        data['audioUrls'] != null ? List<String>.from(data['audioUrls']) : [];
 
     String listToPgArray(List<String> list) {
       if (list.isEmpty) return '{}';
@@ -295,11 +293,11 @@ Merci d'avoir choisi PRO COLIS !
 
     final String photoUrlsPg = listToPgArray(photoUrls);
     final String videoUrlsPg = listToPgArray(videoUrls);
-    final String audioUrlsPg = listToPgArray(audioUrls);  // ✅ AJOUTÉ
+    final String audioUrlsPg = listToPgArray(audioUrls);
 
     print('📸 Photos reçues: $photoUrls');
     print('🎬 Vidéos reçues: $videoUrls');
-    print('🎤 Audios reçus: $audioUrls');  // ✅ AJOUTÉ
+    print('🎤 Audios reçus: $audioUrls');
     print('🔓 Libre service: $isFreeForBidding');
     if (isFreeForBidding) {
       print('💰 Prix suggéré: $proposedPrice');
@@ -350,6 +348,8 @@ Merci d'avoir choisi PRO COLIS !
       'payment_method': paymentMethod,
       'payment_status': paymentStatus,
       'photo_urls': photoUrlsPg,
+      'video_urls': videoUrlsPg,
+      'audio_urls': audioUrlsPg,
       'created_by': userId,
       'created_at': DateTime.now(),
       'updated_at': DateTime.now(),
@@ -359,12 +359,6 @@ Merci d'avoir choisi PRO COLIS !
       columns.add(entry.key);
       values.add(entry.value);
     }
-
-    columns.add('video_urls');
-    values.add(videoUrlsPg);
-
-    columns.add('audio_urls');  // ✅ AJOUTÉ
-    values.add(audioUrlsPg);     // ✅ AJOUTÉ
 
     columns.add('is_free_for_bidding');
     values.add(isFreeForBidding);
@@ -421,10 +415,29 @@ Merci d'avoir choisi PRO COLIS !
           'totalAmount': totalAmount,
           'photoCount': photoUrls.length,
           'videoCount': videoUrls.length,
-          'audioCount': audioUrls.length,  // ✅ AJOUTÉ
+          'audioCount': audioUrls.length,
           'isFreeForBidding': isFreeForBidding,
           if (proposedPrice != null) 'proposedPrice': proposedPrice,
         },
+      );
+
+      // ✅ NOTIFICATION: Colis créé
+      // Récupérer l'ID du destinataire
+      final receiverUserResult = await db.connection.execute(
+        'SELECT id FROM users WHERE phone = \$1 OR email = \$2 LIMIT 1',
+        parameters: [receiverPhone, receiverEmail],
+      );
+      final receiverId = receiverUserResult.isNotEmpty 
+          ? receiverUserResult.first[0].toString() 
+          : userId;
+
+      await _notificationService.notifyParcelCreated(
+        parcelId: parcelId,
+        senderId: userId,
+        senderEmail: senderEmail ?? currentUserName,
+        receiverId: receiverId,
+        trackingNumber: trackingNumber,
+        receiverName: receiverName ?? 'Destinataire',
       );
 
       if (isDriver && !isFreeForBidding) {
@@ -542,10 +555,10 @@ Merci d'avoir choisi PRO COLIS !
 
   // Récupérer les colis en libre service
   Future<List<Map<String, dynamic>>> getFreeParcels() async {
-  final db = await DatabaseService.getInstance();
+    final db = await DatabaseService.getInstance();
 
-  try {
-    final parcelsResult = await db.connection.execute('''
+    try {
+      final parcelsResult = await db.connection.execute('''
       SELECT 
         id, 
         tracking_number, 
@@ -590,7 +603,6 @@ Merci d'avoir choisi PRO COLIS !
     for (final row in parcelsResult) {
       final parcelId = row[0].toString();
 
-      // Récupérer les offres
       final bidsResult = await db.connection.execute('''
         SELECT 
           id, driver_id, driver_name, driver_phone, 
@@ -618,16 +630,13 @@ Merci d'avoir choisi PRO COLIS !
               })
           .toList();
 
-      // Récupérer les photos depuis le tableau PostgreSQL
       List<String> photoUrls = [];
       try {
         final photoData = row[28];
         if (photoData != null) {
-          // PostgreSQL retourne un tableau PostgreSQL, on le convertit en List
           if (photoData is List) {
             photoUrls = photoData.map((e) => e.toString()).toList();
           } else if (photoData is String) {
-            // Si c'est une chaîne JSON, on la parse
             try {
               final decoded = jsonDecode(photoData);
               if (decoded is List) {
@@ -640,7 +649,6 @@ Merci d'avoir choisi PRO COLIS !
         print('⚠️ Erreur parsing photo_urls: $e');
       }
 
-      // Récupérer les vidéos depuis le tableau PostgreSQL
       List<String> videoUrls = [];
       try {
         final videoData = row[29];
@@ -660,7 +668,6 @@ Merci d'avoir choisi PRO COLIS !
         print('⚠️ Erreur parsing video_urls: $e');
       }
 
-      // Récupérer les audios depuis le tableau PostgreSQL
       List<String> audioUrls = [];
       try {
         final audioData = row[30];
@@ -820,7 +827,7 @@ Merci d'avoir choisi PRO COLIS !
         'deliveryFees': toDouble(row[31]),
         'photoUrls': toList(row[32]),
         'videoUrls': toList(row[33]),
-        'audioUrls': toList(row[34]),  // ✅ AJOUTÉ
+        'audioUrls': toList(row[34]),
         'signatureUrl': row[35],
         'notes': row[36],
         'pickupDate':
@@ -857,6 +864,7 @@ Merci d'avoir choisi PRO COLIS !
     String driverId,
     double price, {
     String? message,
+    String? audioUrl,
   }) async {
     final db = await DatabaseService.getInstance();
     final bidId = _uuid.v4();
@@ -890,8 +898,11 @@ Merci d'avoir choisi PRO COLIS !
       final driverPhone = driverResult.first[1].toString();
 
       await db.connection.execute('''
-        INSERT INTO bids (id, parcel_id, driver_id, driver_name, driver_phone, price, message, status, created_at)
-        VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, 'pending', \$8)
+        INSERT INTO bids (
+          id, parcel_id, driver_id, driver_name, driver_phone, 
+          price, message, status, created_at, audio_url
+        )
+        VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, 'pending', \$8, \$9)
       ''', parameters: [
         bidId,
         parcelId,
@@ -900,13 +911,14 @@ Merci d'avoir choisi PRO COLIS !
         driverPhone,
         price.toString(),
         message,
-        DateTime.now()
+        DateTime.now(),
+        audioUrl,
       ]);
 
       await createParcelEvent(
         parcelId,
         'free',
-        'Nouvelle offre reçue: ${price.toStringAsFixed(0)} FCFA par $driverName',
+        'Nouvelle offre reçue: ${price.toStringAsFixed(0)} FCFA par $driverName${audioUrl != null ? ' 🎤 avec message vocal' : ''}',
         userId: driverId,
         userName: driverName,
         metadata: {
@@ -915,7 +927,18 @@ Merci d'avoir choisi PRO COLIS !
           'price': price,
           'driverId': driverId,
           'driverName': driverName,
+          'hasAudio': audioUrl != null,
         },
+      );
+
+      // ✅ NOTIFICATION: Offre créée
+      await _notificationService.notifyBidCreated(
+        parcelId: parcelId,
+        clientId: parcel['sender_id']?.toString() ?? '',
+        driverId: driverId,
+        driverName: driverName,
+        price: price,
+        trackingNumber: parcel['trackingNumber']?.toString() ?? '',
       );
 
       return {
@@ -935,7 +958,8 @@ Merci d'avoir choisi PRO COLIS !
     try {
       final result = await db.connection.execute('''
         SELECT 
-          id, driver_id, driver_name, driver_phone, price, message, status, created_at, responded_at, response_message
+          id, driver_id, driver_name, driver_phone, price, message, status, 
+          created_at, responded_at, response_message, audio_url
         FROM bids 
         WHERE parcel_id = \$1
         ORDER BY price DESC, created_at ASC
@@ -955,6 +979,7 @@ Merci d'avoir choisi PRO COLIS !
                     ? (row[8] as DateTime).toIso8601String()
                     : null,
                 'responseMessage': row[9],
+                'audioUrl': row[10]?.toString(),
               }))
           .toList();
     } catch (e) {
@@ -1080,6 +1105,16 @@ Merci d'avoir choisi PRO COLIS !
           },
         );
 
+        // ✅ NOTIFICATION: Offre acceptée
+        await _notificationService.notifyBidAccepted(
+          parcelId: parcelId,
+          driverId: driverId,
+          clientId: clientId,
+          clientName: 'Client',
+          price: price,
+          trackingNumber: '',
+        );
+
         await db.connection.execute('COMMIT');
 
         print('✅ Offre acceptée avec succès!');
@@ -1169,6 +1204,15 @@ Merci d'avoir choisi PRO COLIS !
         },
       );
 
+      // ✅ NOTIFICATION: Offre refusée
+      await _notificationService.notifyBidRejected(
+        parcelId: parcelId,
+        driverId: '',
+        clientName: 'Client',
+        trackingNumber: '',
+        responseMessage: responseMessage,
+      );
+
       print('✅ Offre $bidId refusée avec succès');
 
       return {
@@ -1227,6 +1271,15 @@ Merci d'avoir choisi PRO COLIS !
           'type': 'free_bidding_enabled',
           'proposedPrice': proposedPrice,
         },
+      );
+
+      // ✅ NOTIFICATION: Colis mis en libre service
+      await _notificationService.notifyStatusUpdate(
+        parcelId: parcelId,
+        userId: clientId,
+        status: 'free',
+        trackingNumber: '',
+        userName: 'Client',
       );
 
       return {
@@ -1559,6 +1612,17 @@ Merci d'avoir choisi PRO COLIS !
 
         final statusLabel = _getStatusLabel(newStatus);
 
+        // ✅ NOTIFICATION: Statut mis à jour
+        if (senderId.isNotEmpty) {
+          await _notificationService.notifyStatusUpdate(
+            parcelId: parcelId,
+            userId: senderId,
+            status: newStatus,
+            trackingNumber: trackingNumber,
+            userName: senderName,
+          );
+        }
+
         if (senderEmail.isNotEmpty) {
           unawaited(_sendParcelNotification(
             toEmail: senderEmail,
@@ -1662,6 +1726,14 @@ Merci d'avoir choisi PRO COLIS !
         final trackingNumber = parcelInfo.first[0].toString();
         final receiverName = parcelInfo.first[1].toString();
         final senderEmail = parcelInfo.first[2].toString();
+
+        // ✅ NOTIFICATION: Colis annulé
+        await _notificationService.notifyCancelled(
+          parcelId: parcelId,
+          userId: userId,
+          trackingNumber: trackingNumber,
+          reason: reason ?? 'Annulation',
+        );
 
         unawaited(_sendParcelNotification(
           toEmail: senderEmail,

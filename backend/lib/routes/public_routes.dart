@@ -88,6 +88,14 @@ class PublicRoutes {
       print('📍 Route /parcels/$parcelId/bids appelée');
       try {
         final bids = await _parcelService.getParcelBids(parcelId);
+        
+        // ✅ AJOUT: Log pour vérifier les audioUrl
+        for (var bid in bids) {
+          if (bid['audioUrl'] != null && bid['audioUrl'].toString().isNotEmpty) {
+            print('🎤 Offre ${bid['id']} contient un audio: ${bid['audioUrl']}');
+          }
+        }
+        
         print('📍 ${bids.length} offres trouvées pour le colis $parcelId');
         return Response.ok(jsonEncode({
           'success': true,

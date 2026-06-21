@@ -342,8 +342,77 @@ class UploadRoutes {
       }
     });
 
+
+    // Dans upload_routes.dart, route /parcel-audio
+router.post('/parcel-audio', (Request request) async {
+  try {
+    final body = await request.readAsString();
+    final data = jsonDecode(body);
+
+    final base64File = data['file'];
+    final parcelId = data['parcelId'];
+    final filename = data['filename'] ?? 'audio.m4a';
+
+    if (base64File == null || base64File.isEmpty) {
+      return Response.badRequest(
+          body: jsonEncode(
+              {'success': false, 'message': 'Fichier manquant'}));
+    }
+
+    if (!_isValidUuid(parcelId)) {
+      return Response.badRequest(
+          body: jsonEncode(
+              {'success': false, 'message': 'ID de colis invalide'}));
+    }
+
+    String cleanBase64 = base64File;
+    if (base64File.contains(',')) {
+      cleanBase64 = base64File.split(',').last;
+    }
+
+    final bytes = base64Decode(cleanBase64);
+
+    // Vérifier la taille du fichier (max 5MB)
+    if (bytes.length > 5 * 1024 * 1024) {
+      return Response.badRequest(
+          body: jsonEncode(
+              {'success': false, 'message': 'Le fichier audio ne doit pas dépasser 5MB'}));
+    }
+
+    final String? publicUrl = await _uploadToCloudinaryOrLocal(
+      bytes: bytes,
+      filename: filename,
+      folder: 'parcels/$parcelId/audio',
+    );
+
+    if (publicUrl == null) {
+      return Response.internalServerError(
+          body: jsonEncode(
+              {'success': false, 'message': 'Erreur lors de l\'upload'}));
+    }
+
+    // Mettre à jour la base de données
+    final db = await DatabaseService.getInstance();
+    await db.connection.execute(
+      'UPDATE parcels SET audio_urls = array_append(audio_urls, \$1) WHERE id = \$2',
+      parameters: [publicUrl, parcelId],
+    );
+
+    print('✅ [PARCEL_AUDIO] Message vocal uploadé: $publicUrl');
+
+    return Response.ok(jsonEncode(
+        {'success': true, 'url': publicUrl, 'parcelId': parcelId}));
+  } catch (e) {
+    print('❌ [PARCEL_AUDIO] Erreur: $e');
+    return Response.internalServerError(
+        body: jsonEncode({'success': false, 'message': e.toString()}));
+  }
+});
+
     return router;
   }
+
+  
 
   // ==================== MÉTHODES UTILITAIRES ====================
 

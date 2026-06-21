@@ -58,7 +58,7 @@ enum ParcelStatus {
         return ParcelStatus.pending;
     }
   }
-  
+
   bool get isFree => this == ParcelStatus.free;
   bool get isPending => this == ParcelStatus.pending;
   bool get isConfirmed => this == ParcelStatus.confirmed;
@@ -68,11 +68,11 @@ enum ParcelStatus {
   bool get isOutForDelivery => this == ParcelStatus.outForDelivery;
   bool get isDelivered => this == ParcelStatus.delivered;
   bool get isCancelled => this == ParcelStatus.cancelled;
-  bool get isInProgress => this == ParcelStatus.confirmed || 
-                            this == ParcelStatus.pickedUp || 
-                            this == ParcelStatus.inTransit || 
-                            this == ParcelStatus.arrived || 
-                            this == ParcelStatus.outForDelivery;
+  bool get isInProgress => this == ParcelStatus.confirmed ||
+      this == ParcelStatus.pickedUp ||
+      this == ParcelStatus.inTransit ||
+      this == ParcelStatus.arrived ||
+      this == ParcelStatus.outForDelivery;
 }
 
 enum ParcelType {
@@ -150,7 +150,7 @@ enum PaymentMethod {
   }
 }
 
-// Classe pour les offres (bids) sur les colis en libre service
+// ==================== CLASSE BID (OFFRE) AVEC AUDIO ====================
 class Bid {
   final String id;
   final String parcelId;
@@ -163,6 +163,7 @@ class Bid {
   final DateTime createdAt;
   final DateTime? respondedAt;
   final String? responseMessage;
+  final String? audioUrl;
 
   Bid({
     required this.id,
@@ -176,21 +177,34 @@ class Bid {
     required this.createdAt,
     this.respondedAt,
     this.responseMessage,
+    this.audioUrl,
   });
 
   factory Bid.fromJson(Map<String, dynamic> json) {
     return Bid(
-      id: json['id'].toString(),
-      parcelId: json['parcel_id'].toString(),
-      driverId: json['driver_id'].toString(),
-      driverName: json['driver_name'].toString(),
-      driverPhone: json['driver_phone'].toString(),
-      price: (json['price'] as num).toDouble(),
+      id: json['id']?.toString() ?? '',
+      parcelId: json['parcel_id']?.toString() ?? json['parcelId']?.toString() ?? '',
+      driverId: json['driver_id']?.toString() ?? json['driverId']?.toString() ?? '',
+      driverName: json['driver_name']?.toString() ?? json['driverName']?.toString() ?? '',
+      driverPhone: json['driver_phone']?.toString() ?? json['driverPhone']?.toString() ?? '',
+      price: (json['price'] as num?)?.toDouble() ?? 0,
       message: json['message']?.toString(),
-      status: json['status'] != null ? BidStatus.fromString(json['status'].toString()) : BidStatus.pending,
-      createdAt: DateTime.parse(json['created_at'].toString()),
-      respondedAt: json['responded_at'] != null ? DateTime.parse(json['responded_at'].toString()) : null,
-      responseMessage: json['response_message']?.toString(),
+      status: json['status'] != null
+          ? BidStatus.fromString(json['status'].toString())
+          : BidStatus.pending,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
+          : (json['createdAt'] != null
+              ? DateTime.parse(json['createdAt'].toString())
+              : DateTime.now()),
+      respondedAt: json['responded_at'] != null
+          ? DateTime.parse(json['responded_at'].toString())
+          : (json['respondedAt'] != null
+              ? DateTime.parse(json['respondedAt'].toString())
+              : null),
+      responseMessage: json['response_message']?.toString() ??
+          json['responseMessage']?.toString(),
+      audioUrl: json['audio_url']?.toString() ?? json['audioUrl']?.toString(),
     );
   }
 
@@ -206,7 +220,10 @@ class Bid {
     'created_at': createdAt.toIso8601String(),
     'responded_at': respondedAt?.toIso8601String(),
     'response_message': responseMessage,
+    'audio_url': audioUrl,
   };
+
+  bool get hasAudio => audioUrl != null && audioUrl!.isNotEmpty;
 }
 
 enum BidStatus {
@@ -239,12 +256,14 @@ enum BidStatus {
   }
 }
 
+// ==================== CLASSE PARCEL ====================
 class Parcel {
   final String id;
   final String trackingNumber;
   final String senderId;
   final String senderName;
   final String senderPhone;
+  final String? senderEmail;
   final String receiverName;
   final String receiverPhone;
   final String? receiverEmail;
@@ -267,10 +286,11 @@ class Parcel {
   final double? deliveryFees;
   final double? totalAmount;
   final PaymentMethod? paymentMethod;
+  final String? paymentPhoneNumber;
   final String? paymentStatus;
   final List<String> photoUrls;
   final List<String> videoUrls;
-  final List<String> audioUrls;  // ✅ AJOUTÉ: Messages vocaux
+  final List<String> audioUrls;
   final String? signatureUrl;
   final bool isInsured;
   final double? insuranceAmount;
@@ -283,10 +303,15 @@ class Parcel {
   final DateTime createdAt;
   final DateTime? updatedAt;
   final String? createdBy;
+  final String? createdByName;
   final String? cancelledBy;
   final String? cancellationReason;
   final DateTime? cancelledAt;
-  
+
+  // ✅ CHAMPS POUR LE SCORE
+  final bool scoreDebited;
+  final bool scoreRefunded;
+
   // Champs pour le libre service (marchandage)
   final bool isFreeForBidding;
   final double? proposedPrice;
@@ -300,6 +325,7 @@ class Parcel {
     required this.senderId,
     required this.senderName,
     required this.senderPhone,
+    this.senderEmail,
     required this.receiverName,
     required this.receiverPhone,
     this.receiverEmail,
@@ -322,10 +348,11 @@ class Parcel {
     this.deliveryFees,
     this.totalAmount,
     this.paymentMethod,
+    this.paymentPhoneNumber,
     this.paymentStatus,
     this.photoUrls = const [],
     this.videoUrls = const [],
-    this.audioUrls = const [],  // ✅ AJOUTÉ
+    this.audioUrls = const [],
     this.signatureUrl,
     this.isInsured = false,
     this.insuranceAmount,
@@ -338,9 +365,14 @@ class Parcel {
     required this.createdAt,
     this.updatedAt,
     this.createdBy,
+    this.createdByName,
     this.cancelledBy,
     this.cancellationReason,
     this.cancelledAt,
+    // ✅ CHAMPS POUR LE SCORE
+    this.scoreDebited = false,
+    this.scoreRefunded = false,
+    // Libre service
     this.isFreeForBidding = false,
     this.proposedPrice,
     this.negotiatedPrice,
@@ -353,62 +385,88 @@ class Parcel {
     List<Bid> bids = [];
     if (json['bids'] != null && json['bids'] is List) {
       bids = (json['bids'] as List)
+          .where((e) => e != null)
           .map((bid) => Bid.fromJson(bid as Map<String, dynamic>))
           .toList();
     }
-    
+
+    // Fonctions utilitaires
+    String? parseString(dynamic value) => value?.toString();
+    double? parseDouble(dynamic value) =>
+        value != null ? (value is double ? value : double.tryParse(value.toString())) : null;
+    DateTime? parseDateTime(dynamic value) =>
+        value != null ? DateTime.tryParse(value.toString()) : null;
+
+    List<String> parseList(dynamic value) {
+      if (value == null) return [];
+      if (value is List) return value.map((e) => e.toString()).toList();
+      return [];
+    }
+
     return Parcel(
-      id: json['id'].toString(),
-      trackingNumber: json['tracking_number'].toString(),
-      senderId: json['sender_id'].toString(),
-      senderName: json['sender_name'].toString(),
-      senderPhone: json['sender_phone'].toString(),
-      receiverName: json['receiver_name'].toString(),
-      receiverPhone: json['receiver_phone'].toString(),
-      receiverEmail: json['receiver_email']?.toString(),
-      receiverAddress: json['receiver_address']?.toString(),
-      description: json['description'].toString(),
-      weight: (json['weight'] as num).toDouble(),
-      length: json['length'] != null ? (json['length'] as num).toDouble() : null,
-      width: json['width'] != null ? (json['width'] as num).toDouble() : null,
-      height: json['height'] != null ? (json['height'] as num).toDouble() : null,
-      type: ParcelType.fromString(json['type'].toString()),
-      status: ParcelStatus.fromString(json['status'].toString()),
-      departureGarageId: json['departure_garage_id'].toString(),
-      departureGarageName: json['departure_garage_name'].toString(),
-      arrivalGarageId: json['arrival_garage_id']?.toString(),
-      arrivalGarageName: json['arrival_garage_name']?.toString(),
-      driverId: json['driver_id']?.toString(),
-      driverName: json['driver_name']?.toString(),
-      driverPhone: json['driver_phone']?.toString(),
-      price: json['price'] != null ? (json['price'] as num).toDouble() : null,
-      deliveryFees: json['delivery_fees'] != null ? (json['delivery_fees'] as num).toDouble() : null,
-      totalAmount: json['total_amount'] != null ? (json['total_amount'] as num).toDouble() : null,
-      paymentMethod: json['payment_method'] != null ? PaymentMethod.fromString(json['payment_method'].toString()) : null,
-      paymentStatus: json['payment_status']?.toString(),
-      photoUrls: json['photo_urls'] != null ? List<String>.from(json['photo_urls']) : [],
-      videoUrls: json['video_urls'] != null ? List<String>.from(json['video_urls']) : [],
-      audioUrls: json['audio_urls'] != null ? List<String>.from(json['audio_urls']) : [],  // ✅ AJOUTÉ
-      signatureUrl: json['signature_url']?.toString(),
+      id: parseString(json['id']) ?? '',
+      trackingNumber: parseString(json['tracking_number']) ?? '',
+      senderId: parseString(json['sender_id']) ?? '',
+      senderName: parseString(json['sender_name']) ?? '',
+      senderPhone: parseString(json['sender_phone']) ?? '',
+      senderEmail: parseString(json['sender_email']),
+      receiverName: parseString(json['receiver_name']) ?? '',
+      receiverPhone: parseString(json['receiver_phone']) ?? '',
+      receiverEmail: parseString(json['receiver_email']),
+      receiverAddress: parseString(json['receiver_address']),
+      description: parseString(json['description']) ?? '',
+      weight: parseDouble(json['weight']) ?? 0,
+      length: parseDouble(json['length']),
+      width: parseDouble(json['width']),
+      height: parseDouble(json['height']),
+      type: json['type'] != null
+          ? ParcelType.fromString(parseString(json['type'])!)
+          : ParcelType.package,
+      status: json['status'] != null
+          ? ParcelStatus.fromString(parseString(json['status'])!)
+          : ParcelStatus.pending,
+      departureGarageId: parseString(json['departure_garage_id']) ?? '',
+      departureGarageName: parseString(json['departure_garage_name']) ?? '',
+      arrivalGarageId: parseString(json['arrival_garage_id']),
+      arrivalGarageName: parseString(json['arrival_garage_name']),
+      driverId: parseString(json['driver_id']),
+      driverName: parseString(json['driver_name']),
+      driverPhone: parseString(json['driver_phone']),
+      price: parseDouble(json['price']),
+      deliveryFees: parseDouble(json['delivery_fees']),
+      totalAmount: parseDouble(json['total_amount']),
+      paymentMethod: json['payment_method'] != null
+          ? PaymentMethod.fromString(parseString(json['payment_method'])!)
+          : null,
+      paymentPhoneNumber: parseString(json['payment_phone_number']),
+      paymentStatus: parseString(json['payment_status']),
+      photoUrls: parseList(json['photo_urls'] ?? json['photoUrls']),
+      videoUrls: parseList(json['video_urls'] ?? json['videoUrls']),
+      audioUrls: parseList(json['audio_urls'] ?? json['audioUrls']),
+      signatureUrl: parseString(json['signature_url']),
       isInsured: json['is_insured'] ?? false,
-      insuranceAmount: json['insurance_amount'] != null ? (json['insurance_amount'] as num).toDouble() : null,
+      insuranceAmount: parseDouble(json['insurance_amount']),
       isUrgent: json['is_urgent'] ?? false,
-      urgentFee: json['urgent_fee'] != null ? (json['urgent_fee'] as num).toDouble() : null,
-      notes: json['notes']?.toString(),
-      pickupDate: json['pickup_date'] != null ? DateTime.parse(json['pickup_date'].toString()) : null,
-      deliveryDate: json['delivery_date'] != null ? DateTime.parse(json['delivery_date'].toString()) : null,
-      estimatedDeliveryDate: json['estimated_delivery_date'] != null ? DateTime.parse(json['estimated_delivery_date'].toString()) : null,
-      createdAt: DateTime.parse(json['created_at'].toString()),
-      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at'].toString()) : null,
-      createdBy: json['created_by']?.toString(),
-      cancelledBy: json['cancelled_by']?.toString(),
-      cancellationReason: json['cancellation_reason']?.toString(),
-      cancelledAt: json['cancelled_at'] != null ? DateTime.parse(json['cancelled_at'].toString()) : null,
-      // Nouveaux champs
+      urgentFee: parseDouble(json['urgent_fee']),
+      notes: parseString(json['notes']),
+      pickupDate: parseDateTime(json['pickup_date']),
+      deliveryDate: parseDateTime(json['delivery_date']),
+      estimatedDeliveryDate: parseDateTime(json['estimated_delivery_date']),
+      createdAt: parseDateTime(json['created_at']) ?? DateTime.now(),
+      updatedAt: parseDateTime(json['updated_at']),
+      createdBy: parseString(json['created_by']),
+      createdByName: parseString(json['created_by_name']),
+      cancelledBy: parseString(json['cancelled_by']),
+      cancellationReason: parseString(json['cancellation_reason']),
+      cancelledAt: parseDateTime(json['cancelled_at']),
+      // ✅ CHAMPS POUR LE SCORE
+      scoreDebited: json['score_debited'] ?? false,
+      scoreRefunded: json['score_refunded'] ?? false,
+      // Libre service
       isFreeForBidding: json['is_free_for_bidding'] ?? false,
-      proposedPrice: json['proposed_price'] != null ? (json['proposed_price'] as num).toDouble() : null,
-      negotiatedPrice: json['negotiated_price'] != null ? (json['negotiated_price'] as num).toDouble() : null,
-      selectedBidId: json['selected_bid_id']?.toString(),
+      proposedPrice: parseDouble(json['proposed_price'] ?? json['proposedPrice']),
+      negotiatedPrice: parseDouble(json['negotiated_price'] ?? json['negotiatedPrice']),
+      selectedBidId: parseString(json['selected_bid_id'] ?? json['selectedBidId']),
       bids: bids,
     );
   }
@@ -419,6 +477,7 @@ class Parcel {
     'sender_id': senderId,
     'sender_name': senderName,
     'sender_phone': senderPhone,
+    'sender_email': senderEmail,
     'receiver_name': receiverName,
     'receiver_phone': receiverPhone,
     'receiver_email': receiverEmail,
@@ -441,10 +500,11 @@ class Parcel {
     'delivery_fees': deliveryFees,
     'total_amount': totalAmount,
     'payment_method': paymentMethod?.value,
+    'payment_phone_number': paymentPhoneNumber,
     'payment_status': paymentStatus,
     'photo_urls': photoUrls,
     'video_urls': videoUrls,
-    'audio_urls': audioUrls,  // ✅ AJOUTÉ
+    'audio_urls': audioUrls,
     'signature_url': signatureUrl,
     'is_insured': isInsured,
     'insurance_amount': insuranceAmount,
@@ -457,28 +517,33 @@ class Parcel {
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt?.toIso8601String(),
     'created_by': createdBy,
+    'created_by_name': createdByName,
     'cancelled_by': cancelledBy,
     'cancellation_reason': cancellationReason,
     'cancelled_at': cancelledAt?.toIso8601String(),
-    // Nouveaux champs
+    // ✅ CHAMPS POUR LE SCORE
+    'score_debited': scoreDebited,
+    'score_refunded': scoreRefunded,
+    // Libre service
     'is_free_for_bidding': isFreeForBidding,
     'proposed_price': proposedPrice,
     'negotiated_price': negotiatedPrice,
     'selected_bid_id': selectedBidId,
     'bids': bids.map((b) => b.toJson()).toList(),
   };
-  
-  // Propriétés calculées utiles
+
+  // ==================== PROPRIÉTÉS CALCULÉES ====================
+
   bool get hasBids => bids.isNotEmpty;
   int get bidsCount => bids.length;
   bool get hasAudio => audioUrls.isNotEmpty;
   int get audioCount => audioUrls.length;
-  
+
   Bid? get bestBid {
     if (bids.isEmpty) return null;
     return bids.reduce((a, b) => a.price > b.price ? a : b);
   }
-  
+
   Bid? get selectedBid {
     if (selectedBidId == null) return null;
     try {
@@ -487,12 +552,17 @@ class Parcel {
       return null;
     }
   }
-  
+
   List<Bid> get pendingBids => bids.where((b) => b.status == BidStatus.pending).toList();
   List<Bid> get acceptedBids => bids.where((b) => b.status == BidStatus.accepted).toList();
   List<Bid> get rejectedBids => bids.where((b) => b.status == BidStatus.rejected).toList();
+
+  // ✅ PROPRIÉTÉS POUR LE SCORE
+  bool get isScoreDebited => scoreDebited;
+  bool get isScoreRefunded => scoreRefunded;
 }
 
+// ==================== CLASSE PARCEL EVENT ====================
 class ParcelEvent {
   final String id;
   final String parcelId;
@@ -524,18 +594,24 @@ class ParcelEvent {
 
   factory ParcelEvent.fromJson(Map<String, dynamic> json) {
     return ParcelEvent(
-      id: json['id'].toString(),
-      parcelId: json['parcel_id'].toString(),
-      status: ParcelStatus.fromString(json['status'].toString()),
-      description: json['description'].toString(),
+      id: json['id']?.toString() ?? '',
+      parcelId: json['parcel_id']?.toString() ?? json['parcelId']?.toString() ?? '',
+      status: json['status'] != null
+          ? ParcelStatus.fromString(json['status'].toString())
+          : ParcelStatus.pending,
+      description: json['description']?.toString() ?? '',
       location: json['location']?.toString(),
-      locationLat: json['location_lat']?.toString(),
-      locationLng: json['location_lng']?.toString(),
-      userId: json['user_id']?.toString(),
-      userName: json['user_name']?.toString(),
-      userRole: json['user_role']?.toString(),
-      photoUrl: json['photo_url']?.toString(),
-      timestamp: DateTime.parse(json['created_at'].toString()),
+      locationLat: json['location_lat']?.toString() ?? json['locationLat']?.toString(),
+      locationLng: json['location_lng']?.toString() ?? json['locationLng']?.toString(),
+      userId: json['user_id']?.toString() ?? json['userId']?.toString(),
+      userName: json['user_name']?.toString() ?? json['userName']?.toString(),
+      userRole: json['user_role']?.toString() ?? json['userRole']?.toString(),
+      photoUrl: json['photo_url']?.toString() ?? json['photoUrl']?.toString(),
+      timestamp: json['created_at'] != null
+          ? DateTime.parse(json['created_at'].toString())
+          : (json['timestamp'] != null
+              ? DateTime.parse(json['timestamp'].toString())
+              : DateTime.now()),
     );
   }
 

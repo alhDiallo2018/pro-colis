@@ -1,9 +1,13 @@
-// lib/services/user_service.dart
+// backend/lib/services/user_service.dart
+// ignore_for_file: unused_local_variable
+
 import 'package:procolis_backend/services/database_service.dart';
+import 'package:procolis_backend/services/notification_service.dart';
 import 'package:uuid/uuid.dart';
 
 class UserService {
-  
+  final NotificationService _notificationService = NotificationService();
+
   // Récupérer un utilisateur par son ID avec TOUS les champs
   Future<Map<String, dynamic>?> getUserById(String userId) async {
     final db = await DatabaseService.getInstance();
@@ -111,7 +115,6 @@ class UserService {
     }
   }
 
-
   Future<List<Map<String, dynamic>>> getAllClients() async {
     final db = await DatabaseService.getInstance();
     
@@ -123,6 +126,7 @@ class UserService {
           g.name AS garage_name
         FROM users u
         LEFT JOIN garages g ON g.id = u.garage_id
+        WHERE u.role = 'client'
         ORDER BY u.created_at DESC
       ''');
       
@@ -139,7 +143,7 @@ class UserService {
         'garageName': row[9],
       })).toList();
     } catch (e) {
-      print('❌ Erreur getAllUsers: $e');
+      print('❌ Erreur getAllClients: $e');
       return [];
     }
   }
@@ -149,7 +153,6 @@ class UserService {
     final db = await DatabaseService.getInstance();
     
     try {
-      // Mapping des champs camelCase -> snake_case
       final fieldMapping = {
         'fullName': 'full_name',
         'email': 'email',
@@ -204,6 +207,18 @@ class UserService {
         return {'success': false, 'message': 'Utilisateur non trouvé'};
       }
       
+      // ✅ NOTIFICATION: Profil mis à jour
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '✅ Profil mis à jour',
+        body: 'Votre profil a été mis à jour avec succès.',
+        priority: 'normal',
+        data: {
+          'type': 'profile_updated',
+        },
+      );
+      
       return {
         'success': true,
         'message': 'Profil mis à jour avec succès',
@@ -226,7 +241,6 @@ class UserService {
     final db = await DatabaseService.getInstance();
     
     try {
-      // Vérifier l'ancien PIN
       final checkResult = await db.connection.execute(
         'SELECT pin FROM users WHERE id = \$1 AND pin = \$2',
         parameters: [userId, currentPin],
@@ -239,6 +253,18 @@ class UserService {
       await db.connection.execute(
         'UPDATE users SET pin = \$2, updated_at = NOW() WHERE id = \$1',
         parameters: [userId, newPin],
+      );
+      
+      // ✅ NOTIFICATION: PIN modifié
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '🔐 PIN modifié',
+        body: 'Votre PIN a été modifié avec succès.',
+        priority: 'high',
+        data: {
+          'type': 'pin_updated',
+        },
       );
       
       return {'success': true, 'message': 'PIN modifié avec succès'};
@@ -307,6 +333,19 @@ class UserService {
         data['createdBy'],
       ]);
       
+      // ✅ NOTIFICATION: Bienvenue
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '🎉 Bienvenue sur PRO COLIS !',
+        body: 'Votre compte a été créé avec succès par un administrateur.',
+        priority: 'high',
+        data: {
+          'type': 'user_created_by_admin',
+          'role': data['role'] ?? 'client',
+        },
+      );
+      
       return {
         'success': true,
         'message': 'Utilisateur créé avec succès',
@@ -369,6 +408,18 @@ class UserService {
       
       await db.connection.execute(query, parameters: values);
       
+      // ✅ NOTIFICATION: Profil mis à jour par admin
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '📝 Profil mis à jour par l\'administrateur',
+        body: 'Un administrateur a mis à jour votre profil.',
+        priority: 'normal',
+        data: {
+          'type': 'user_updated_by_admin',
+        },
+      );
+      
       return {'success': true, 'message': 'Utilisateur mis à jour avec succès'};
     } catch (e) {
       return {'success': false, 'message': 'Erreur: ${e.toString()}'};
@@ -380,10 +431,38 @@ class UserService {
     final db = await DatabaseService.getInstance();
     
     try {
+      // Récupérer l'ancien rôle
+      final oldRoleResult = await db.connection.execute(
+        'SELECT full_name FROM users WHERE id = \$1',
+        parameters: [userId],
+      );
+      final userName = oldRoleResult.isNotEmpty ? oldRoleResult.first[0].toString() : 'Utilisateur';
+      
       await db.connection.execute(
         'UPDATE users SET role = \$2, updated_at = NOW() WHERE id = \$1',
         parameters: [userId, role],
       );
+      
+      final roleLabels = {
+        'client': 'Client',
+        'driver': 'Chauffeur',
+        'admin': 'Admin Garage',
+        'super_admin': 'Super Admin',
+      };
+      
+      // ✅ NOTIFICATION: Rôle modifié
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '🔄 Rôle modifié',
+        body: 'Votre rôle a été changé en : ${roleLabels[role] ?? role}',
+        priority: 'high',
+        data: {
+          'type': 'role_updated',
+          'newRole': role,
+        },
+      );
+      
       return {'success': true, 'message': 'Rôle mis à jour avec succès'};
     } catch (e) {
       return {'success': false, 'message': 'Erreur: ${e.toString()}'};
@@ -395,10 +474,50 @@ class UserService {
     final db = await DatabaseService.getInstance();
     
     try {
+      final statusLabels = {
+        'active': '✅ Actif',
+        'suspended': '⛔ Suspendu',
+        'deleted': '🗑️ Supprimé',
+      };
+      
       await db.connection.execute(
         'UPDATE users SET status = \$2, updated_at = NOW() WHERE id = \$1',
         parameters: [userId, status],
       );
+      
+      // ✅ NOTIFICATION: Statut modifié
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '📊 Statut mis à jour',
+        body: 'Votre statut a été changé en : ${statusLabels[status] ?? status}',
+        priority: status == 'suspended' ? 'urgent' : 'high',
+        data: {
+          'type': 'status_updated',
+          'newStatus': status,
+        },
+      );
+      
+      // Si l'utilisateur est suspendu, notification supplémentaire pour les admins
+      if (status == 'suspended') {
+        final admins = await db.connection.execute(
+          'SELECT id FROM users WHERE role = \'super_admin\' OR role = \'admin\'',
+        );
+        for (final admin in admins) {
+          await _notificationService.createNotification(
+            userId: admin[0].toString(),
+            type: 'system',
+            title: '⚠️ Utilisateur suspendu',
+            body: 'L\'utilisateur $userId a été suspendu.',
+            priority: 'urgent',
+            data: {
+              'type': 'user_suspended',
+              'userId': userId,
+            },
+          );
+        }
+      }
+      
       return {'success': true, 'message': 'Statut mis à jour avec succès'};
     } catch (e) {
       return {'success': false, 'message': 'Erreur: ${e.toString()}'};
@@ -410,11 +529,48 @@ class UserService {
     final db = await DatabaseService.getInstance();
     
     try {
+      // Récupérer les infos de l'utilisateur
+      final userResult = await db.connection.execute(
+        'SELECT full_name, email, role FROM users WHERE id = \$1',
+        parameters: [userId],
+      );
+      
+      final userName = userResult.isNotEmpty ? userResult.first[0].toString() : 'Utilisateur';
+      final userEmail = userResult.isNotEmpty ? userResult.first[1].toString() : '';
+      final userRole = userResult.isNotEmpty ? userResult.first[2].toString() : 'client';
+      
       await db.connection.execute('''
         UPDATE users 
         SET is_approved = TRUE, approved_by = \$2, approved_at = NOW(), updated_at = NOW()
         WHERE id = \$1
       ''', parameters: [userId, approvedBy]);
+      
+      // ✅ NOTIFICATION: Compte approuvé
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '✅ Compte approuvé !',
+        body: 'Votre compte a été approuvé par un administrateur. Vous pouvez maintenant utiliser toutes les fonctionnalités.',
+        priority: 'urgent',
+        data: {
+          'type': 'account_approved',
+          'approvedBy': approvedBy,
+        },
+      );
+      
+      // Si c'est un chauffeur, notification spéciale
+      if (userRole == 'driver') {
+        await _notificationService.createNotification(
+          userId: userId,
+          type: 'system',
+          title: '🚚 Profil chauffeur activé',
+          body: 'Votre profil chauffeur est maintenant actif. Vous pouvez accepter des offres.',
+          priority: 'high',
+          data: {
+            'type': 'driver_profile_approved',
+          },
+        );
+      }
       
       return {'success': true, 'message': 'Utilisateur approuvé avec succès'};
     } catch (e) {
@@ -442,7 +598,20 @@ class UserService {
     final db = await DatabaseService.getInstance();
     
     try {
+      // Récupérer les infos de l'utilisateur avant suppression
+      final userResult = await db.connection.execute(
+        'SELECT full_name, email FROM users WHERE id = \$1',
+        parameters: [userId],
+      );
+      
+      final userName = userResult.isNotEmpty ? userResult.first[0].toString() : 'Utilisateur';
+      
       await db.connection.execute('DELETE FROM users WHERE id = \$1', parameters: [userId]);
+      
+      // ✅ NOTIFICATION: Compte supprimé (l'utilisateur ne pourra pas la recevoir car le compte est supprimé,
+      // mais on la garde pour les logs)
+      print('🗑️ Compte utilisateur supprimé: $userName ($userId)');
+      
       return {'success': true, 'message': 'Utilisateur supprimé avec succès'};
     } catch (e) {
       return {'success': false, 'message': 'Erreur: ${e.toString()}'};
@@ -460,6 +629,35 @@ class UserService {
       );
     } catch (e) {
       print('❌ Erreur updateLastActive: $e');
+    }
+  }
+
+  // ✅ NOUVELLE MÉTHODE: Envoyer une notification à un utilisateur
+  Future<Map<String, dynamic>> sendNotificationToUser({
+    required String userId,
+    required String title,
+    required String body,
+    String? type,
+    String? parcelId,
+    String? bidId,
+    String priority = 'normal',
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      await _notificationService.createNotification(
+        userId: userId,
+        type: type ?? 'info',
+        title: title,
+        body: body,
+        parcelId: parcelId,
+        bidId: bidId,
+        priority: priority,
+        data: data,
+      );
+      
+      return {'success': true, 'message': 'Notification envoyée'};
+    } catch (e) {
+      return {'success': false, 'message': 'Erreur: ${e.toString()}'};
     }
   }
 }

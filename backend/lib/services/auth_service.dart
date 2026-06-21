@@ -1,8 +1,11 @@
-// lib/services/auth_service.dart
+// backend/lib/services/auth_service.dart
+// ignore_for_file: unused_local_variable
+
 import 'dart:async';
 
 import 'package:procolis_backend/models/user.dart';
 import 'package:procolis_backend/services/database_service.dart';
+import 'package:procolis_backend/services/notification_service.dart';
 import 'package:uuid/uuid.dart';
 
 import '../utils/jwt_helper.dart';
@@ -11,6 +14,7 @@ import 'email_service.dart';
 class AuthService {
   final EmailService _emailService;
   final _uuid = Uuid();
+  late final NotificationService _notificationService;
 
   // Stockage temporaire des OTP (en production, utiliser Redis)
   final Map<String, Map<String, dynamic>> _otpStorage = {};
@@ -25,7 +29,9 @@ class AuthService {
   };
 
   AuthService({required EmailService emailService})
-      : _emailService = emailService;
+      : _emailService = emailService {
+    _notificationService = NotificationService();
+  }
 
   // Méthode utilitaire pour convertir un garage ID en UUID valide
   String? _convertGarageIdToUuid(dynamic garageId) {
@@ -122,7 +128,7 @@ class AuthService {
         data['phone'],
         data['fullName'],
         role,
-        defaultOtp, // L'OTP devient le PIN par défaut
+        defaultOtp,
         address,
         city,
         region,
@@ -157,6 +163,33 @@ class AuthService {
       }).catchError((error) {
         print('❌ [REGISTER] Erreur envoi email: $error');
       }));
+
+      // ✅ NOTIFICATION: Inscription réussie
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '🎉 Bienvenue sur PRO COLIS !',
+        body: 'Votre compte a été créé avec succès. Utilisez votre PIN pour vous connecter.',
+        priority: 'high',
+        data: {
+          'type': 'registration',
+          'role': role,
+        },
+      );
+
+      // Si l'utilisateur est un chauffeur, notification supplémentaire
+      if (role == 'driver') {
+        await _notificationService.createNotification(
+          userId: userId,
+          type: 'system',
+          title: '🚚 Profil chauffeur activé',
+          body: 'Vous pouvez maintenant accepter des offres et livrer des colis.',
+          priority: 'normal',
+          data: {
+            'type': 'driver_profile_activated',
+          },
+        );
+      }
 
       // Récupérer l'utilisateur créé
       final userResult = await db.connection.execute(
@@ -207,7 +240,6 @@ class AuthService {
 
       final userId = user.first[0] as String;
       final email = user.first[1] as String;
-      // ignore: unused_local_variable
       final fullName = user.first[3] as String? ?? 'Client';
 
       print('📧 [OTP] Utilisateur trouvé: $email, OTP: $otp');
@@ -220,8 +252,7 @@ class AuthService {
         'attempts': 0
       };
 
-      // Envoyer l'email de manière asynchrone (ne pas bloquer la réponse)
-      // Utiliser un completer pour ne pas attendre
+      // Envoyer l'email de manière asynchrone
       unawaited(_emailService.sendOtpCode(email, otp).then((success) {
         if (success) {
           print('✅ [OTP] Email envoyé avec succès à $email (OTP: $otp)');
@@ -232,9 +263,7 @@ class AuthService {
         print('❌ [OTP] Erreur lors de l\'envoi email: $error');
       }));
 
-      // Répondre immédiatement sans attendre l'email
-      print(
-          '✅ [OTP] Réponse immédiate pour $email (envoi email en arrière-plan)');
+      print('✅ [OTP] Réponse immédiate pour $email (envoi email en arrière-plan)');
 
       return {
         'success': true,
@@ -317,51 +346,77 @@ class AuthService {
       parameters: [userId],
     );
 
+    // ✅ NOTIFICATION: Connexion réussie
+    await _notificationService.createNotification(
+      userId: userId,
+      type: 'system',
+      title: '🔐 Connexion réussie',
+      body: 'Vous êtes connecté à PRO COLIS en tant que ${user.fullName}',
+      priority: 'normal',
+      data: {
+        'type': 'login_success',
+        'role': user.role,
+      },
+    );
+
     print('✅ [VERIFY] Utilisateur authentifié: ${user.email}');
 
     return {'success': true, 'accessToken': token, 'user': user.toJson()};
   }
 
   Future<Map<String, dynamic>> loginWithPin(String pin, String identifier) async {
-  final db = await DatabaseService.getInstance();
+    final db = await DatabaseService.getInstance();
 
-  try {
-    print('🔐 [PIN_LOGIN] Tentative pour: $identifier avec PIN');
-    
-    // Chercher l'utilisateur par email OU téléphone ET par PIN
-    final result = await db.connection.execute('''
-      SELECT * FROM users 
-      WHERE (email = \$1 OR phone = \$1) 
-        AND pin = \$2 
-        AND status = 'active'
-    ''', parameters: [identifier, pin]);
+    try {
+      print('🔐 [PIN_LOGIN] Tentative pour: $identifier avec PIN');
+      
+      final result = await db.connection.execute('''
+        SELECT * FROM users 
+        WHERE (email = \$1 OR phone = \$1) 
+          AND pin = \$2 
+          AND status = 'active'
+      ''', parameters: [identifier, pin]);
 
-    if (result.isEmpty) {
-      print('❌ [PIN_LOGIN] Identifiant ou PIN incorrect');
-      return {'success': false, 'message': 'Identifiant ou PIN incorrect'};
+      if (result.isEmpty) {
+        print('❌ [PIN_LOGIN] Identifiant ou PIN incorrect');
+        return {'success': false, 'message': 'Identifiant ou PIN incorrect'};
+      }
+
+      final user = User.fromDatabaseRow(result.first);
+      final token = JwtHelper.generateToken(user.id);
+
+      await db.connection.execute(
+        'UPDATE users SET last_login = NOW() WHERE id = \$1',
+        parameters: [user.id],
+      );
+
+      // ✅ NOTIFICATION: Connexion réussie (pour les chauffeurs)
+      if (user.isDriver) {
+        await _notificationService.createNotification(
+          userId: user.id,
+          type: 'system',
+          title: '🚚 Connecté en tant que chauffeur',
+          body: 'Vous êtes maintenant connecté à l\'espace chauffeur PRO COLIS',
+          priority: 'normal',
+          data: {
+            'type': 'driver_login',
+            'role': 'driver',
+          },
+        );
+      }
+
+      print('✅ [PIN_LOGIN] Connexion réussie pour: ${user.email}');
+
+      return {
+        'success': true, 
+        'accessToken': token, 
+        'user': user.toJson()
+      };
+    } catch (e) {
+      print('❌ [PIN_LOGIN] Erreur: $e');
+      return {'success': false, 'message': e.toString()};
     }
-
-    final user = User.fromDatabaseRow(result.first);
-    final token = JwtHelper.generateToken(user.id);
-
-    // Mettre à jour last_login
-    await db.connection.execute(
-      'UPDATE users SET last_login = NOW() WHERE id = \$1',
-      parameters: [user.id],
-    );
-
-    print('✅ [PIN_LOGIN] Connexion réussie pour: ${user.email}');
-
-    return {
-      'success': true, 
-      'accessToken': token, 
-      'user': user.toJson()
-    };
-  } catch (e) {
-    print('❌ [PIN_LOGIN] Erreur: $e');
-    return {'success': false, 'message': e.toString()};
   }
-}
 
   Future<Map<String, dynamic>> getUserById(String userId) async {
     final db = await DatabaseService.getInstance();
@@ -405,6 +460,18 @@ class AuthService {
         parameters: [newPin, userId],
       );
 
+      // ✅ NOTIFICATION: PIN modifié
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '🔐 PIN modifié avec succès',
+        body: 'Votre PIN a été modifié. N\'oubliez pas de le garder confidentiel.',
+        priority: 'high',
+        data: {
+          'type': 'pin_changed',
+        },
+      );
+
       return {'success': true, 'message': 'PIN modifié avec succès'};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
@@ -425,13 +492,67 @@ class AuthService {
         return {'success': false, 'message': 'Email non trouvé'};
       }
 
+      final userId = result.first[0] as String;
+
       // Réinitialiser le PIN
       await db.connection.execute(
         'UPDATE users SET pin = \$1, updated_at = NOW() WHERE email = \$2',
         parameters: [newPin, email],
       );
 
+      // ✅ NOTIFICATION: PIN réinitialisé
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '🔐 PIN réinitialisé',
+        body: 'Votre PIN a été réinitialisé. Utilisez le nouveau PIN pour vous connecter.',
+        priority: 'urgent',
+        data: {
+          'type': 'pin_reset',
+          'email': email,
+        },
+      );
+
       return {'success': true, 'message': 'PIN réinitialisé avec succès'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ✅ NOUVELLE MÉTHODE: Notification de mot de passe oublié
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    final db = await DatabaseService.getInstance();
+
+    try {
+      final result = await db.connection.execute(
+        'SELECT id, full_name FROM users WHERE email = \$1 AND status = \'active\'',
+        parameters: [email],
+      );
+
+      if (result.isEmpty) {
+        return {'success': false, 'message': 'Email non trouvé ou compte inactif'};
+      }
+
+      final userId = result.first[0] as String;
+      final fullName = result.first[1] as String? ?? 'Utilisateur';
+
+      // ✅ NOTIFICATION: Demande de réinitialisation
+      await _notificationService.createNotification(
+        userId: userId,
+        type: 'system',
+        title: '🔐 Demande de réinitialisation de PIN',
+        body: 'Une demande de réinitialisation de PIN a été effectuée pour votre compte. Si vous n\'êtes pas à l\'origine de cette demande, veuillez contacter le support immédiatement.',
+        priority: 'urgent',
+        data: {
+          'type': 'pin_reset_requested',
+          'email': email,
+        },
+      );
+
+      return {
+        'success': true,
+        'message': 'Un email de réinitialisation a été envoyé',
+      };
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }

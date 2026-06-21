@@ -1,6 +1,7 @@
 import 'dart:io';
 
-import 'package:dotenv/dotenv.dart';
+import 'package:dotenv/dotenv.dart' show DotEnv;
+
 
 class DatabaseConfig {
   static DatabaseConfig? _instance;
