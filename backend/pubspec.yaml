@@ -1,4 +1,4 @@
-# backend/pubspec.yaml - Version stable
+# backend/pubspec.yaml - Version stable avec Shelf uniquement
 name: procolis_backend
 version: 1.0.0
 description: PRO COLIS Backend API
@@ -7,28 +7,34 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
+  # Framework web
   shelf: ^1.4.0
   shelf_router: ^1.1.3
   shelf_cors_headers: ^0.1.5
   shelf_static: ^1.1.0
-  #postgres: ^3.2.0
+  shelf_multipart: ^2.0.1
+  
+  # Base de données
+  postgres: ^3.5.10
+  
+  # Sécurité
   bcrypt: ^1.1.1
   crypto: ^3.0.3
   dart_jsonwebtoken: ^2.12.0
+  
+  # Utilitaires
   uuid: ^4.2.1
   dotenv: ^4.2.0
   logging: ^1.2.0
+  path: ^1.8.3
+  mime: ^1.0.4
+  
+  # Email
   mailer: ^6.0.1
   http: ^1.1.0
-  image: ^4.1.3
-  mime: ^1.0.4
-  path: ^1.8.3
-  shelf_multipart: ^2.0.1
-  # dotenv: ^4.2.0
-  aqueduct: ^4.0.0-b1
   
-
-  postgres: ^3.5.10
+  # Images
+  image: ^4.1.3
 
 dev_dependencies:
-  test: ^1.24.0  
+  test: ^1.24.0
