@@ -319,6 +319,9 @@ class Parcel {
   final String? selectedBidId;
   final List<Bid> bids;
 
+  // ✅ CHAMP EVENTS
+  final List<Map<String, dynamic>> events;
+
   Parcel({
     required this.id,
     required this.trackingNumber,
@@ -378,6 +381,8 @@ class Parcel {
     this.negotiatedPrice,
     this.selectedBidId,
     this.bids = const [],
+    // ✅ EVENTS
+    this.events = const [],
   });
 
   factory Parcel.fromJson(Map<String, dynamic> json) {
@@ -387,6 +392,15 @@ class Parcel {
       bids = (json['bids'] as List)
           .where((e) => e != null)
           .map((bid) => Bid.fromJson(bid as Map<String, dynamic>))
+          .toList();
+    }
+
+    // Récupérer les événements
+    List<Map<String, dynamic>> events = [];
+    if (json['events'] != null && json['events'] is List) {
+      events = (json['events'] as List)
+          .where((e) => e != null)
+          .map((e) => e as Map<String, dynamic>)
           .toList();
     }
 
@@ -468,6 +482,8 @@ class Parcel {
       negotiatedPrice: parseDouble(json['negotiated_price'] ?? json['negotiatedPrice']),
       selectedBidId: parseString(json['selected_bid_id'] ?? json['selectedBidId']),
       bids: bids,
+      // ✅ EVENTS
+      events: events,
     );
   }
 
@@ -530,7 +546,129 @@ class Parcel {
     'negotiated_price': negotiatedPrice,
     'selected_bid_id': selectedBidId,
     'bids': bids.map((b) => b.toJson()).toList(),
+    'events': events,
   };
+
+  // ✅ METHODE COPYWITH
+  Parcel copyWith({
+    String? id,
+    String? trackingNumber,
+    String? senderId,
+    String? senderName,
+    String? senderPhone,
+    String? senderEmail,
+    String? receiverName,
+    String? receiverPhone,
+    String? receiverEmail,
+    String? receiverAddress,
+    String? description,
+    double? weight,
+    double? length,
+    double? width,
+    double? height,
+    ParcelType? type,
+    ParcelStatus? status,
+    String? departureGarageId,
+    String? departureGarageName,
+    String? arrivalGarageId,
+    String? arrivalGarageName,
+    String? driverId,
+    String? driverName,
+    String? driverPhone,
+    double? price,
+    double? deliveryFees,
+    double? totalAmount,
+    PaymentMethod? paymentMethod,
+    String? paymentPhoneNumber,
+    String? paymentStatus,
+    List<String>? photoUrls,
+    List<String>? videoUrls,
+    List<String>? audioUrls,
+    String? signatureUrl,
+    bool? isInsured,
+    double? insuranceAmount,
+    bool? isUrgent,
+    double? urgentFee,
+    String? notes,
+    DateTime? pickupDate,
+    DateTime? deliveryDate,
+    DateTime? estimatedDeliveryDate,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? createdBy,
+    String? createdByName,
+    String? cancelledBy,
+    String? cancellationReason,
+    DateTime? cancelledAt,
+    bool? scoreDebited,
+    bool? scoreRefunded,
+    bool? isFreeForBidding,
+    double? proposedPrice,
+    double? negotiatedPrice,
+    String? selectedBidId,
+    List<Bid>? bids,
+    List<Map<String, dynamic>>? events,
+  }) {
+    return Parcel(
+      id: id ?? this.id,
+      trackingNumber: trackingNumber ?? this.trackingNumber,
+      senderId: senderId ?? this.senderId,
+      senderName: senderName ?? this.senderName,
+      senderPhone: senderPhone ?? this.senderPhone,
+      senderEmail: senderEmail ?? this.senderEmail,
+      receiverName: receiverName ?? this.receiverName,
+      receiverPhone: receiverPhone ?? this.receiverPhone,
+      receiverEmail: receiverEmail ?? this.receiverEmail,
+      receiverAddress: receiverAddress ?? this.receiverAddress,
+      description: description ?? this.description,
+      weight: weight ?? this.weight,
+      length: length ?? this.length,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      type: type ?? this.type,
+      status: status ?? this.status,
+      departureGarageId: departureGarageId ?? this.departureGarageId,
+      departureGarageName: departureGarageName ?? this.departureGarageName,
+      arrivalGarageId: arrivalGarageId ?? this.arrivalGarageId,
+      arrivalGarageName: arrivalGarageName ?? this.arrivalGarageName,
+      driverId: driverId ?? this.driverId,
+      driverName: driverName ?? this.driverName,
+      driverPhone: driverPhone ?? this.driverPhone,
+      price: price ?? this.price,
+      deliveryFees: deliveryFees ?? this.deliveryFees,
+      totalAmount: totalAmount ?? this.totalAmount,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentPhoneNumber: paymentPhoneNumber ?? this.paymentPhoneNumber,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      photoUrls: photoUrls ?? this.photoUrls,
+      videoUrls: videoUrls ?? this.videoUrls,
+      audioUrls: audioUrls ?? this.audioUrls,
+      signatureUrl: signatureUrl ?? this.signatureUrl,
+      isInsured: isInsured ?? this.isInsured,
+      insuranceAmount: insuranceAmount ?? this.insuranceAmount,
+      isUrgent: isUrgent ?? this.isUrgent,
+      urgentFee: urgentFee ?? this.urgentFee,
+      notes: notes ?? this.notes,
+      pickupDate: pickupDate ?? this.pickupDate,
+      deliveryDate: deliveryDate ?? this.deliveryDate,
+      estimatedDeliveryDate: estimatedDeliveryDate ?? this.estimatedDeliveryDate,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      createdBy: createdBy ?? this.createdBy,
+      createdByName: createdByName ?? this.createdByName,
+      cancelledBy: cancelledBy ?? this.cancelledBy,
+      cancellationReason: cancellationReason ?? this.cancellationReason,
+      cancelledAt: cancelledAt ?? this.cancelledAt,
+      scoreDebited: scoreDebited ?? this.scoreDebited,
+      scoreRefunded: scoreRefunded ?? this.scoreRefunded,
+      isFreeForBidding: isFreeForBidding ?? this.isFreeForBidding,
+      proposedPrice: proposedPrice ?? this.proposedPrice,
+      negotiatedPrice: negotiatedPrice ?? this.negotiatedPrice,
+      selectedBidId: selectedBidId ?? this.selectedBidId,
+      bids: bids ?? this.bids,
+      events: events ?? this.events,
+    );
+  }
 
   // ==================== PROPRIÉTÉS CALCULÉES ====================
 
@@ -538,6 +676,8 @@ class Parcel {
   int get bidsCount => bids.length;
   bool get hasAudio => audioUrls.isNotEmpty;
   int get audioCount => audioUrls.length;
+  bool get hasEvents => events.isNotEmpty;
+  int get eventsCount => events.length;
 
   Bid? get bestBid {
     if (bids.isEmpty) return null;

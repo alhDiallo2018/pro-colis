@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:dotenv/dotenv.dart' show DotEnv;
 
-
 class DatabaseConfig {
   static DatabaseConfig? _instance;
 
@@ -16,68 +15,66 @@ class DatabaseConfig {
   DatabaseConfig._internal();
 
   static Future<DatabaseConfig> getInstance() async {
-    if (_instance == null) {
-      _instance = DatabaseConfig._internal();
-      await _instance!._loadConfig();
-    }
-
+    _instance ??= DatabaseConfig._internal();
+    await _instance!._loadConfig();
     return _instance!;
   }
 
   Future<void> _loadConfig() async {
-    // PRIORITÉ ABSOLUE: Variables d'environnement du système (Render)
-    // AVANT de charger .env
-    
-    String? envHost = Platform.environment['DB_HOST'];
-    String? envPort = Platform.environment['DB_PORT'];
-    String? envName = Platform.environment['DB_NAME'];
-    String? envUser = Platform.environment['DB_USER'];
-    String? envPassword = Platform.environment['DB_PASSWORD'];
-    
-    // Si on est sur Render (DB_HOST existe)
+    // Variables d'environnement Render
+    final envHost = Platform.environment['DB_HOST'];
+    final envPort = Platform.environment['DB_PORT'];
+    final envDatabase =
+        Platform.environment['DB_DATABASE'] ??
+        Platform.environment['DB_NAME'];
+    final envUsername =
+        Platform.environment['DB_USERNAME'] ??
+        Platform.environment['DB_USER'];
+    final envPassword = Platform.environment['DB_PASSWORD'];
+
     if (envHost != null && envHost.isNotEmpty) {
-      print('🌍 Mode Render détecté - Utilisation variables env système');
-      
+      print('🌍 Configuration Supabase depuis Render');
+
       host = envHost;
-      port = int.parse(envPort ?? '5432');
-      database = envName ?? 'procolis_db';
-      username = envUser ?? 'procolis_user';
+      port = int.tryParse(envPort ?? '5432') ?? 5432;
+      database = envDatabase ?? 'postgres';
+      username = envUsername ?? 'postgres';
       password = envPassword ?? '';
-      useSsl = true; // Render nécessite SSL
-      
-      print('📋 Database Config Loaded (Render)');
-      print('Host: $host');
-      print('Port: $port');
-      print('Database: $database');
-      print('User: $username');
-      print('SSL: $useSsl');
+      useSsl = true;
+
+      _printConfig();
       return;
     }
-    
-    // Fallback: Mode local avec fichier .env
-    print('🏠 Mode Local - Chargement depuis .env');
-    
+
+    // Développement local (.env)
     final env = DotEnv(includePlatformEnvironment: false);
-    
+
     try {
       env.load();
-      print('✅ Fichier .env chargé');
-    } catch (e) {
-      print('⚠️ Aucun fichier .env trouvé, utilisation valeurs par défaut');
+      print('🏠 Configuration locale (.env)');
+    } catch (_) {
+      print('⚠️ Aucun fichier .env trouvé');
     }
 
     host = env['DB_HOST'] ?? 'localhost';
-    port = int.parse(env['DB_PORT'] ?? '5432');
-    database = env['DB_NAME'] ?? 'procolis_db';
-    username = env['DB_USER'] ?? 'postgres';
+    port = int.tryParse(env['DB_PORT'] ?? '5432') ?? 5432;
+    database = env['DB_DATABASE'] ?? env['DB_NAME'] ?? 'postgres';
+    username = env['DB_USERNAME'] ?? env['DB_USER'] ?? 'postgres';
     password = env['DB_PASSWORD'] ?? '';
-    useSsl = host != 'localhost' && host != '127.0.0.1';
 
-    print('📋 Database Config Loaded (Local)');
+    // SSL obligatoire pour Supabase
+    useSsl = host.contains('supabase.co') ||
+        (host != 'localhost' && host != '127.0.0.1');
+
+    _printConfig();
+  }
+
+  void _printConfig() {
+    print('📋 Database Config');
     print('Host: $host');
     print('Port: $port');
     print('Database: $database');
-    print('User: $username');
+    print('Username: $username');
     print('SSL: $useSsl');
   }
 }

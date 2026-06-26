@@ -7,5 +7,6 @@ export 'notification_routes.dart';
 export 'public_routes.dart';
 export 'score_routes.dart';
 export 'super_admin_routes.dart';
+export 'track_routes.dart';
 export 'upload_routes.dart';
 
