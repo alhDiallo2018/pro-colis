@@ -176,6 +176,32 @@ class AuthService {
     }
   }
 
+  static Gender? _toGender(String? value) {
+    if (value == null) return null;
+    switch (value.toLowerCase()) {
+      case 'male':
+        return Gender.male;
+      case 'female':
+        return Gender.female;
+      default:
+        return Gender.other;
+    }
+  }
+
+  static DriverStatus? _toDriverStatus(String? value) {
+    if (value == null) return null;
+    switch (value.toLowerCase()) {
+      case 'available':
+        return DriverStatus.available;
+      case 'busy':
+        return DriverStatus.busy;
+      case 'offline':
+        return DriverStatus.offline;
+      default:
+        return DriverStatus.offline;
+    }
+  }
+
   // ==================== INSCRIPTION ====================
 
   Future<Map<String, dynamic>> register(Map<String, dynamic> data) async {
@@ -220,11 +246,13 @@ class AuthService {
       final address = _getStringValue(data, 'address');
       final city = _getStringValue(data, 'city');
       final region = _getStringValue(data, 'region');
+      final country = _getStringValue(data, 'country');
       final vehiclePlate = _getStringValue(data, 'vehiclePlate');
       final vehicleModel = _getStringValue(data, 'vehicleModel');
       final vehicleColor = _getStringValue(data, 'vehicleColor');
       final vehicleYear = _getIntValue(data, 'vehicleYear');
       final role = _getStringValue(data, 'role') ?? 'client';
+      final gender = _getStringValue(data, 'gender');
 
       print('🏢 [REGISTER] Données traitées:');
       print('   vehiclePlate: $vehiclePlate');
@@ -232,17 +260,18 @@ class AuthService {
       print('   vehicleColor: $vehicleColor');
       print('   vehicleYear: $vehicleYear');
       print('   role: $role');
+      print('   gender: $gender');
       print('   OTP/PIN par défaut: $defaultOtp');
 
       // Créer l'utilisateur avec l'OTP comme PIN par défaut
       await db.connection.execute('''
         INSERT INTO users (
           id, email, phone, full_name, role, pin, 
-          address, city, region, 
+          address, city, region, country,
           vehicle_plate, vehicle_model, vehicle_color, vehicle_year,
-          garage_id, created_at, updated_at
+          garage_id, gender, created_at, updated_at
         )
-        VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, NOW(), NOW())
+        VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, \$11, \$12, \$13, \$14, \$15, \$16, NOW(), NOW())
       ''', parameters: [
         userId,
         data['email'],
@@ -253,11 +282,13 @@ class AuthService {
         address,
         city,
         region,
+        country,
         vehiclePlate,
         vehicleModel,
         vehicleColor,
         vehicleYear,
         garageUuid,
+        gender,
       ]);
 
       print('✅ [REGISTER] Utilisateur créé avec succès: $userId');
@@ -326,7 +357,7 @@ class AuthService {
 
       final row = userResult.first;
       
-      // Construction manuelle de l'utilisateur
+      // ✅ Construction manuelle de l'utilisateur avec les bons champs
       final user = User(
         id: _safeToString(row[0]),
         email: _safeToString(row[1]),
@@ -338,26 +369,28 @@ class AuthService {
         address: _safeToStringNullable(row[7]),
         city: _safeToStringNullable(row[8]),
         region: _safeToStringNullable(row[9]),
-        vehiclePlate: _safeToStringNullable(row[10]),
-        vehicleModel: _safeToStringNullable(row[11]),
-        vehicleColor: _safeToStringNullable(row[12]),
-        vehicleYear: _safeToInt(row[13]),
-        pin: _safeToStringNullable(row[14]),
-        garageId: _safeToStringNullable(row[15]),
-        garageName: _safeToStringNullable(row[16]),
-        profilePhotoUrl: _safeToStringNullable(row[17]),
-        isEmailVerified: _safeToBool(row[18]),
-        isPhoneVerified: _safeToBool(row[19]),
-        isProfileComplete: _safeToBool(row[20]),
-        rating: _safeToDouble(row[21]),
-        totalDeliveries: _safeToInt(row[22]),
-        completedDeliveries: _safeToInt(row[23]),
-        cancelledDeliveries: _safeToInt(row[24]),
-        gender: _safeToStringNullable(row[25]),
-        createdAt: _safeToDateTimeRequired(row[26]),
-        updatedAt: _safeToDateTime(row[27]),
-        lastLogin: _safeToDateTime(row[28]),
-        lastActiveAt: _safeToDateTime(row[29]),
+        country: _safeToStringNullable(row[10]),
+        vehiclePlate: _safeToStringNullable(row[11]),
+        vehicleModel: _safeToStringNullable(row[12]),
+        vehicleColor: _safeToStringNullable(row[13]),
+        vehicleYear: _safeToInt(row[14]),
+        driverStatus: _toDriverStatus(_safeToStringNullable(row[15])),
+        pin: _safeToStringNullable(row[16]),
+        garageId: _safeToStringNullable(row[17]),
+        garageName: _safeToStringNullable(row[18]),
+        profilePhoto: _safeToStringNullable(row[19]), // ✅ profilePhoto
+        isEmailVerified: _safeToBool(row[20]),
+        isPhoneVerified: _safeToBool(row[21]),
+        isProfileComplete: _safeToBool(row[22]),
+        rating: _safeToDouble(row[23]),
+        totalDeliveries: _safeToInt(row[24]),
+        completedDeliveries: _safeToInt(row[25]),
+        cancelledDeliveries: _safeToInt(row[26]),
+        gender: _toGender(_safeToStringNullable(row[27])), // ✅ Gender
+        createdAt: _safeToDateTimeRequired(row[28]),
+        updatedAt: _safeToDateTime(row[29]),
+        lastLogin: _safeToDateTime(row[30]),
+        lastActiveAt: _safeToDateTime(row[31]),
       );
 
       return {
@@ -490,6 +523,7 @@ class AuthService {
 
     final row = userResult.first;
     
+    // ✅ Construction manuelle de l'utilisateur avec les bons champs
     final user = User(
       id: _safeToString(row[0]),
       email: _safeToString(row[1]),
@@ -501,26 +535,28 @@ class AuthService {
       address: _safeToStringNullable(row[7]),
       city: _safeToStringNullable(row[8]),
       region: _safeToStringNullable(row[9]),
-      vehiclePlate: _safeToStringNullable(row[10]),
-      vehicleModel: _safeToStringNullable(row[11]),
-      vehicleColor: _safeToStringNullable(row[12]),
-      vehicleYear: _safeToInt(row[13]),
-      pin: _safeToStringNullable(row[14]),
-      garageId: _safeToStringNullable(row[15]),
-      garageName: _safeToStringNullable(row[16]),
-      profilePhotoUrl: _safeToStringNullable(row[17]),
-      isEmailVerified: _safeToBool(row[18]),
-      isPhoneVerified: _safeToBool(row[19]),
-      isProfileComplete: _safeToBool(row[20]),
-      rating: _safeToDouble(row[21]),
-      totalDeliveries: _safeToInt(row[22]),
-      completedDeliveries: _safeToInt(row[23]),
-      cancelledDeliveries: _safeToInt(row[24]),
-      gender: _safeToStringNullable(row[25]),
-      createdAt: _safeToDateTimeRequired(row[26]),
-      updatedAt: _safeToDateTime(row[27]),
-      lastLogin: _safeToDateTime(row[28]),
-      lastActiveAt: _safeToDateTime(row[29]),
+      country: _safeToStringNullable(row[10]),
+      vehiclePlate: _safeToStringNullable(row[11]),
+      vehicleModel: _safeToStringNullable(row[12]),
+      vehicleColor: _safeToStringNullable(row[13]),
+      vehicleYear: _safeToInt(row[14]),
+      driverStatus: _toDriverStatus(_safeToStringNullable(row[15])),
+      pin: _safeToStringNullable(row[16]),
+      garageId: _safeToStringNullable(row[17]),
+      garageName: _safeToStringNullable(row[18]),
+      profilePhoto: _safeToStringNullable(row[19]), // ✅ profilePhoto
+      isEmailVerified: _safeToBool(row[20]),
+      isPhoneVerified: _safeToBool(row[21]),
+      isProfileComplete: _safeToBool(row[22]),
+      rating: _safeToDouble(row[23]),
+      totalDeliveries: _safeToInt(row[24]),
+      completedDeliveries: _safeToInt(row[25]),
+      cancelledDeliveries: _safeToInt(row[26]),
+      gender: _toGender(_safeToStringNullable(row[27])), // ✅ Gender
+      createdAt: _safeToDateTimeRequired(row[28]),
+      updatedAt: _safeToDateTime(row[29]),
+      lastLogin: _safeToDateTime(row[30]),
+      lastActiveAt: _safeToDateTime(row[31]),
     );
 
     await db.connection.execute(
@@ -536,7 +572,7 @@ class AuthService {
       priority: 'normal',
       data: {
         'type': 'login_success',
-        'role': user.role.name,
+        'role': user.role.value,
       },
     );
 
@@ -567,6 +603,7 @@ class AuthService {
 
       final row = result.first;
       
+      // ✅ Construction manuelle de l'utilisateur avec les bons champs
       final user = User(
         id: _safeToString(row[0]),
         email: _safeToString(row[1]),
@@ -578,26 +615,28 @@ class AuthService {
         address: _safeToStringNullable(row[7]),
         city: _safeToStringNullable(row[8]),
         region: _safeToStringNullable(row[9]),
-        vehiclePlate: _safeToStringNullable(row[10]),
-        vehicleModel: _safeToStringNullable(row[11]),
-        vehicleColor: _safeToStringNullable(row[12]),
-        vehicleYear: _safeToInt(row[13]),
-        pin: _safeToStringNullable(row[14]),
-        garageId: _safeToStringNullable(row[15]),
-        garageName: _safeToStringNullable(row[16]),
-        profilePhotoUrl: _safeToStringNullable(row[17]),
-        isEmailVerified: _safeToBool(row[18]),
-        isPhoneVerified: _safeToBool(row[19]),
-        isProfileComplete: _safeToBool(row[20]),
-        rating: _safeToDouble(row[21]),
-        totalDeliveries: _safeToInt(row[22]),
-        completedDeliveries: _safeToInt(row[23]),
-        cancelledDeliveries: _safeToInt(row[24]),
-        gender: _safeToStringNullable(row[25]),
-        createdAt: _safeToDateTimeRequired(row[26]),
-        updatedAt: _safeToDateTime(row[27]),
-        lastLogin: _safeToDateTime(row[28]),
-        lastActiveAt: _safeToDateTime(row[29]),
+        country: _safeToStringNullable(row[10]),
+        vehiclePlate: _safeToStringNullable(row[11]),
+        vehicleModel: _safeToStringNullable(row[12]),
+        vehicleColor: _safeToStringNullable(row[13]),
+        vehicleYear: _safeToInt(row[14]),
+        driverStatus: _toDriverStatus(_safeToStringNullable(row[15])),
+        pin: _safeToStringNullable(row[16]),
+        garageId: _safeToStringNullable(row[17]),
+        garageName: _safeToStringNullable(row[18]),
+        profilePhoto: _safeToStringNullable(row[19]), // ✅ profilePhoto
+        isEmailVerified: _safeToBool(row[20]),
+        isPhoneVerified: _safeToBool(row[21]),
+        isProfileComplete: _safeToBool(row[22]),
+        rating: _safeToDouble(row[23]),
+        totalDeliveries: _safeToInt(row[24]),
+        completedDeliveries: _safeToInt(row[25]),
+        cancelledDeliveries: _safeToInt(row[26]),
+        gender: _toGender(_safeToStringNullable(row[27])), // ✅ Gender
+        createdAt: _safeToDateTimeRequired(row[28]),
+        updatedAt: _safeToDateTime(row[29]),
+        lastLogin: _safeToDateTime(row[30]),
+        lastActiveAt: _safeToDateTime(row[31]),
       );
 
       final token = JwtHelper.generateToken(user.id);
@@ -651,6 +690,7 @@ class AuthService {
 
       final row = result.first;
       
+      // ✅ Construction manuelle de l'utilisateur avec les bons champs
       final user = User(
         id: _safeToString(row[0]),
         email: _safeToString(row[1]),
@@ -662,26 +702,28 @@ class AuthService {
         address: _safeToStringNullable(row[7]),
         city: _safeToStringNullable(row[8]),
         region: _safeToStringNullable(row[9]),
-        vehiclePlate: _safeToStringNullable(row[10]),
-        vehicleModel: _safeToStringNullable(row[11]),
-        vehicleColor: _safeToStringNullable(row[12]),
-        vehicleYear: _safeToInt(row[13]),
-        pin: _safeToStringNullable(row[14]),
-        garageId: _safeToStringNullable(row[15]),
-        garageName: _safeToStringNullable(row[16]),
-        profilePhotoUrl: _safeToStringNullable(row[17]),
-        isEmailVerified: _safeToBool(row[18]),
-        isPhoneVerified: _safeToBool(row[19]),
-        isProfileComplete: _safeToBool(row[20]),
-        rating: _safeToDouble(row[21]),
-        totalDeliveries: _safeToInt(row[22]),
-        completedDeliveries: _safeToInt(row[23]),
-        cancelledDeliveries: _safeToInt(row[24]),
-        gender: _safeToStringNullable(row[25]),
-        createdAt: _safeToDateTimeRequired(row[26]),
-        updatedAt: _safeToDateTime(row[27]),
-        lastLogin: _safeToDateTime(row[28]),
-        lastActiveAt: _safeToDateTime(row[29]),
+        country: _safeToStringNullable(row[10]),
+        vehiclePlate: _safeToStringNullable(row[11]),
+        vehicleModel: _safeToStringNullable(row[12]),
+        vehicleColor: _safeToStringNullable(row[13]),
+        vehicleYear: _safeToInt(row[14]),
+        driverStatus: _toDriverStatus(_safeToStringNullable(row[15])),
+        pin: _safeToStringNullable(row[16]),
+        garageId: _safeToStringNullable(row[17]),
+        garageName: _safeToStringNullable(row[18]),
+        profilePhoto: _safeToStringNullable(row[19]), // ✅ profilePhoto
+        isEmailVerified: _safeToBool(row[20]),
+        isPhoneVerified: _safeToBool(row[21]),
+        isProfileComplete: _safeToBool(row[22]),
+        rating: _safeToDouble(row[23]),
+        totalDeliveries: _safeToInt(row[24]),
+        completedDeliveries: _safeToInt(row[25]),
+        cancelledDeliveries: _safeToInt(row[26]),
+        gender: _toGender(_safeToStringNullable(row[27])), // ✅ Gender
+        createdAt: _safeToDateTimeRequired(row[28]),
+        updatedAt: _safeToDateTime(row[29]),
+        lastLogin: _safeToDateTime(row[30]),
+        lastActiveAt: _safeToDateTime(row[31]),
       );
 
       return {'success': true, 'user': user.toJson()};
