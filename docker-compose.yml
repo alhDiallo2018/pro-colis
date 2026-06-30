@@ -1,0 +1,36 @@
+services:
+  api:
+    build: .
+    container_name: procolis-node-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://procolis:procolis@postgres:5432/procolis?schema=public
+      PORT: 8080
+    ports:
+      - "${API_PORT:-18081}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: procolis-node-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: procolis
+      POSTGRES_USER: procolis
+      POSTGRES_PASSWORD: procolis
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U procolis -d procolis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
